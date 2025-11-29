@@ -5,8 +5,8 @@
 
 extern bool flag_scan_requested;
 
-extern std::string SSID;
-extern std::string password;
+extern std::string tempSSID;
+extern std::string tempPassword;
 extern bool SSIDGiven;
 extern bool passGiven;
 
@@ -40,7 +40,7 @@ class MyCharCallbacks : public NimBLECharacteristicCallbacks {
       // SSID characteristic
       if (val.length() > 0) {
         printf("Received SSID: %s\n", val.c_str());
-        SSID = val;
+        tempSSID = val;
         SSIDGiven = true;
       }
     }
@@ -49,7 +49,7 @@ class MyCharCallbacks : public NimBLECharacteristicCallbacks {
       if (val.length() > 0) {
         printf("Received Password: %s\n", val.c_str());
         passGiven = true;
-        password = val;
+        tempPassword = val;
       }
     }
     else if (uuidStr.find("0003") != std::string::npos) {

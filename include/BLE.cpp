@@ -4,8 +4,8 @@
 
 bool flag_scan_requested = false;
 
-std::string SSID = "";
-std::string password = "";
+std::string tempSSID = "";
+std::string tempPassword = "";
 bool SSIDGiven = false;
 bool passGiven = false;
 
