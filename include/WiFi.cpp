@@ -117,7 +117,7 @@ bool WiFi::attemptConnect(char *SSID, char *PW, wifi_auth_mode_t authMode) {
   return awaitConnected();
 }
 
-bool WiFi::attemptConnectEnterprise(char *SSID, char *username, char *PW, wifi_auth_mode_t authMode) {
+bool WiFi::attemptConnect(char *SSID, char *username, char *PW, wifi_auth_mode_t authMode) {
   std::string ssid = SSID;
   std::string uname = username;
   std::string password = PW;

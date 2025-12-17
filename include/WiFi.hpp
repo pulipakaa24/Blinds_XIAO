@@ -8,8 +8,8 @@ class WiFi {
   public:
   static void init();
   static bool attemptConnect(char *SSID, char *PW, wifi_auth_mode_t authMode);
-  static bool attemptConnectEnterprise(char *SSID, char *username, 
-    char *PW, wifi_auth_mode_t authMode);
+  static bool attemptConnect(char *SSID, char *username, char *PW,
+    wifi_auth_mode_t authMode);
   private:
   static bool authFailed;
   static bool awaitConnected();
