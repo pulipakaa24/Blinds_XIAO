@@ -16,7 +16,6 @@ extern "C" void app_main() {
   }
   ESP_ERROR_CHECK(ret);
 
-  WiFi bmWiFi;
   bmWiFi.init();
   
   nvs_handle_t WiFiHandle;

@@ -4,6 +4,8 @@
 #include "esp_wifi.h"
 #include <string>
 
+extern WiFi bmWiFi;
+
 class WiFi {
   public:
   static void init();
