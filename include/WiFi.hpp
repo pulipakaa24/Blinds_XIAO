@@ -4,14 +4,13 @@
 #include "esp_wifi.h"
 #include <string>
 
-extern WiFi bmWiFi;
-
 class WiFi {
   public:
   static void init();
-  static bool attemptConnect(char *SSID, char *PW, wifi_auth_mode_t authMode);
-  static bool attemptConnect(char *SSID, char *username, char *PW,
-    wifi_auth_mode_t authMode);
+  static bool attemptConnect(const std::string ssid, const std::string password,
+    const wifi_auth_mode_t authMode);
+  static bool attemptConnect(const std::string ssid, const std::string uname,
+    const std::string password, const wifi_auth_mode_t authMode);
   private:
   static bool authFailed;
   static bool awaitConnected();
@@ -24,6 +23,8 @@ class WiFi {
   static bool isConnected();
   static std::string getIP();
 };
+
+extern WiFi bmWiFi;
 
 void scanAndUpdateSSIDList();
 

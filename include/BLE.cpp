@@ -2,15 +2,15 @@
 #include "NimBLEDevice.h"
 #include "WiFi.hpp"
 
-bool flag_scan_requested = false;
+std::atomic<bool> flag_scan_requested{false};
+std::atomic<bool> credsGiven{false};
+std::mutex dataMutex;
 
-std::string tempSSID = "";
-std::string tempPassword = "";
-bool SSIDGiven = false;
-bool passGiven = false;
-
-std::string token = "";
-bool tokenGiven = false;
+wifi_auth_mode_t auth;
+static std::string SSID = "";
+static std::string TOKEN = "";
+static std::string PASS = "";
+static std::string UNAME = "";
 
 // Global pointers to characteristics for notification support
 NimBLECharacteristic* ssidListChar = nullptr;
@@ -42,26 +42,13 @@ NimBLEAdvertising* initBLE() {
                   );
   ssidListChar->createDescriptor("2902"); // Add BLE2902 descriptor for notifications
   
-  // 0x0001 - SSID (WRITE)
-  NimBLECharacteristic *ssidChar = pService->createCharacteristic(
+  // 0x0001 - Credentials JSON (WRITE) - Replaces separate SSID/Password/Token
+  // Expected JSON format: {"ssid":"network","password":"pass","token":"optional"}
+  NimBLECharacteristic *credsChar = pService->createCharacteristic(
                                       "0001",
                                       NIMBLE_PROPERTY::WRITE
                                     );
-  ssidChar->setCallbacks(charCallbacks);
-  
-  // 0x0002 - Password (WRITE)
-  NimBLECharacteristic *passChar = pService->createCharacteristic(
-                                      "0002",
-                                      NIMBLE_PROPERTY::WRITE
-                                    );
-  passChar->setCallbacks(charCallbacks);
-  
-  // 0x0003 - Token (WRITE)
-  NimBLECharacteristic *tokenChar = pService->createCharacteristic(
-                                      "0003",
-                                      NIMBLE_PROPERTY::WRITE
-                                    );
-  tokenChar->setCallbacks(charCallbacks);
+  credsChar->setCallbacks(charCallbacks);
   
   // 0x0004 - SSID Refresh (WRITE)
   NimBLECharacteristic *ssidRefreshChar = pService->createCharacteristic(
@@ -93,10 +80,106 @@ NimBLEAdvertising* initBLE() {
   return pAdvertising;
 }
 
-void BLEtick(NimBLEAdvertising* pAdvertising) {
+bool BLEtick(NimBLEAdvertising* pAdvertising) {
   if(flag_scan_requested) {
     flag_scan_requested = false;
     printf("Scanning WiFi...\n");
     scanAndUpdateSSIDList();
   }
+  else if (credsGiven) {
+    credsGiven = false;
+    std::string tmpSSID;
+    std::string tmpUNAME;
+    std::string tmpPASS;
+    wifi_auth_mode_t tmpAUTH;
+    {
+      std::lock_guard<std::mutex> lock(dataMutex);
+      tmpSSID = SSID;
+      tmpUNAME = UNAME;
+      tmpPASS = PASS;
+      tmpAUTH = auth;
+    }
+
+    bool wifiConnect;
+    if (tmpAUTH == WIFI_AUTH_WPA2_ENTERPRISE || tmpAUTH == WIFI_AUTH_WPA3_ENTERPRISE)
+      wifiConnect = bmWiFi.attemptConnect(tmpSSID.c_str(), tmpUNAME.c_str(), tmpPASS.c_str(), tmpAUTH);
+    else wifiConnect = bmWiFi.attemptConnect(tmpSSID.c_str(), tmpPASS.c_str(), tmpAUTH);
+    if (!wifiConnect) return false;
+
+    // save wifi credentials here
+    // Authenticate with server here
+  }
+  return false;
 }
+
+void MyCharCallbacks::onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) {
+    std::string val = pChar->getValue();
+    std::string uuidStr = pChar->getUUID().toString();
+    
+    printf("onWrite called! UUID: %s, Value length: %d\n", uuidStr.c_str(), val.length());
+    
+    // Check which characteristic was written to
+    if (uuidStr.find("0001") != std::string::npos) {
+      // Credentials JSON characteristic
+      if (val.length() > 0) {
+        printf("Received JSON: %s\n", val.c_str());
+        
+        // Parse JSON using cJSON
+        cJSON *root = cJSON_Parse(val.c_str());
+        if (root != NULL) {
+          cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
+          cJSON *password = cJSON_GetObjectItem(root, "password");
+          cJSON *token = cJSON_GetObjectItem(root, "token");
+          cJSON *authType = cJSON_GetObjectItem(root, "auth");
+          cJSON *uname = cJSON_GetObjectItem(root, "uname");
+          
+          bool enterprise = false;
+          bool open = false;
+          bool error = false;
+          if (cJSON_IsNumber(authType)) {
+            enterprise = authType->valueint == WIFI_AUTH_WPA2_ENTERPRISE || 
+              authType->valueint == WIFI_AUTH_WPA3_ENTERPRISE;
+            open = authType->valueint == WIFI_AUTH_OPEN;
+            error = authType->valueint < 0 || authType->valueint >= WIFI_AUTH_MAX;
+          }
+          else error = true;
+          if (error) {
+            printf("ERROR: Invalid Auth mode passed in with JSON.\n");
+            credsGiven = false;
+            cJSON_Delete(root);
+            return;
+          }
+          
+          bool ssidPresent = cJSON_IsString(ssid) && ssid->valuestring != NULL;
+          bool passPresent = cJSON_IsString(password) && password->valuestring != NULL;
+          bool unamePresent = cJSON_IsString(uname) && uname->valuestring != NULL;
+          bool tokenPresent = cJSON_IsString(token) && token->valuestring != NULL;
+          bool tempCredsGiven = tokenPresent && ssidPresent && (passPresent || open) &&
+                        (unamePresent || !enterprise);
+          
+          if (tempCredsGiven) {
+            printf("Received credentials, will attempt connection\n");
+            std::lock_guard<std::mutex> lock(dataMutex);
+
+            auth = (wifi_auth_mode_t)(authType->valueint);
+            SSID = ssid->valuestring;
+            TOKEN = token->valuestring;
+            PASS = passPresent ? password->valuestring : "";
+            UNAME = unamePresent ? uname->valuestring : "";
+            credsGiven = tempCredsGiven; // update the global flag.
+          }
+          else printf("ERROR: Did not receive necessary credentials.\n");
+          cJSON_Delete(root);
+        } else {
+          printf("Failed to parse JSON\n");
+          credsGiven = false;
+        }
+      }
+    }
+    else if (uuidStr.find("0004") != std::string::npos) {
+      // Refresh characteristic
+      printf("Refresh Requested\n");
+      flag_scan_requested = true;
+    }
+    else printf("Unknown UUID: %s\n", uuidStr.c_str());
+  }

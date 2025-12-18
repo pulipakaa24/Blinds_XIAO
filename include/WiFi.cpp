@@ -58,6 +58,7 @@ void WiFi::event_handler(void* arg, esp_event_base_t event_base,
 }
 
 void WiFi::init() {
+  s_wifi_event_group = xEventGroupCreate();
   // 1. Init Network Interface
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -105,52 +106,45 @@ std::string WiFi::getIP() {
   return std::string(buf);
 }
 
-bool WiFi::attemptConnect(char *SSID, char *PW, wifi_auth_mode_t authMode) {
+bool WiFi::attemptConnect(const std::string ssid, const std::string password,
+  const wifi_auth_mode_t authMode) {
+  esp_wifi_sta_enterprise_disable();
+  esp_wifi_disconnect();
+
   wifi_config_t wifi_config = {};
-  strncpy((char*)wifi_config.sta.ssid, SSID, sizeof(wifi_config.sta.ssid));
-  strncpy((char*)wifi_config.sta.password, PW, sizeof(wifi_config.sta.password));
+  snprintf((char*)wifi_config.sta.ssid, sizeof(wifi_config.sta.ssid), "%s", ssid.c_str());
+  snprintf((char*)wifi_config.sta.password, sizeof(wifi_config.sta.password), "%s", password.c_str());
 
   wifi_config.sta.threshold.authmode = authMode;
   wifi_config.sta.pmf_cfg.capable = true;
   wifi_config.sta.pmf_cfg.required = false;
 
   esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
-
   return awaitConnected();
 }
 
-bool WiFi::attemptConnect(char *SSID, char *username, char *PW, wifi_auth_mode_t authMode) {
-  std::string ssid = SSID;
-  std::string uname = username;
-  std::string password = PW;
+bool WiFi::attemptConnect(const std::string ssid, const std::string uname,
+  const std::string password, const wifi_auth_mode_t authMode) {
+  esp_wifi_disconnect();
+
   // 1. Auto-generate the Identity
   std::string identity = "anonymous";
-  
-  // Check if the username is an email (contains '@')
   size_t atPos = uname.find('@');
-  if (atPos != std::string::npos) {
-      // Append the domain from the real username
-      // Example: "user@gmail.com" -> "anonymous@gmail.com"
-      identity += uname.substr(atPos);
-  }
+  if (atPos != std::string::npos) identity += uname.substr(atPos);
   
   printf("Real User: %s\n", uname.c_str());
   printf("Outer ID : %s (Privacy Safe)\n", identity.c_str());
 
-  // 2. Clear & Config
-  esp_wifi_disconnect();
-
   wifi_config_t wifi_config = {};
-  strncpy((char*)wifi_config.sta.ssid, ssid.c_str(), sizeof(wifi_config.sta.ssid));
+  snprintf((char*)wifi_config.sta.ssid, sizeof(wifi_config.sta.ssid), "%s", ssid.c_str());
   wifi_config.sta.threshold.authmode = authMode;
-  esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+  ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
 
   // 3. Set the calculated identity (using new ESP-IDF v5.x API)
+  esp_wifi_sta_enterprise_enable();
   esp_eap_client_set_identity((uint8_t *)identity.c_str(), identity.length());
   esp_eap_client_set_username((uint8_t *)uname.c_str(), uname.length());
   esp_eap_client_set_password((uint8_t *)password.c_str(), password.length());
-
-  esp_wifi_sta_enterprise_enable();
 
   return awaitConnected();
 }

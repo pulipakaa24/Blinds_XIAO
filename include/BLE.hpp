@@ -2,16 +2,11 @@
 #define BLE_H
 
 #include "NimBLEDevice.h"
-
-extern bool flag_scan_requested;
-
-extern std::string tempSSID;
-extern std::string tempPassword;
-extern bool SSIDGiven;
-extern bool passGiven;
-
-extern std::string token;
-extern bool tokenGiven;
+#include "cJSON.h"
+#include <atomic>
+#include <mutex>
+#include <string>
+#include "esp_wifi_types.h"
 
 // Global pointers to characteristics for notification support
 extern NimBLECharacteristic* ssidListChar;
@@ -29,49 +24,10 @@ class MyServerCallbacks : public NimBLEServerCallbacks {
 };
 
 class MyCharCallbacks : public NimBLECharacteristicCallbacks {
-  void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) {
-    std::string val = pChar->getValue();
-    std::string uuidStr = pChar->getUUID().toString();
-    
-    printf("onWrite called! UUID: %s, Value length: %d\n", uuidStr.c_str(), val.length());
-    
-    // Check which characteristic was written to
-    if (uuidStr.find("0001") != std::string::npos) {
-      // SSID characteristic
-      if (val.length() > 0) {
-        printf("Received SSID: %s\n", val.c_str());
-        tempSSID = val;
-        SSIDGiven = true;
-      }
-    }
-    else if (uuidStr.find("0002") != std::string::npos) {
-      // Password characteristic
-      if (val.length() > 0) {
-        printf("Received Password: %s\n", val.c_str());
-        passGiven = true;
-        tempPassword = val;
-      }
-    }
-    else if (uuidStr.find("0003") != std::string::npos) {
-      // Token characteristic
-      if (val.length() > 0) {
-        printf("Received Token: %s\n", val.c_str());
-        tokenGiven = true;
-        token = val;
-      }
-    }
-    else if (uuidStr.find("0004") != std::string::npos) {
-      // Refresh characteristic
-      printf("Refresh Requested\n");
-      flag_scan_requested = true;
-    }
-    else {
-      printf("Unknown UUID: %s\n", uuidStr.c_str());
-    }
-  }
+  void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo);
 };
 
 NimBLEAdvertising* initBLE();
-void BLEtick(NimBLEAdvertising* pAdvertising);
+bool BLEtick(NimBLEAdvertising* pAdvertising);
 
 #endif
