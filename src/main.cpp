@@ -19,34 +19,41 @@ extern "C" void app_main() {
   bmWiFi.init();
   
   nvs_handle_t WiFiHandle;
-  nvs_open("WiFiCreds", NVS_READWRITE, &WiFiHandle);
-  size_t ssidSize;
-  esp_err_t WiFiPrefsError = nvs_get_str(WiFiHandle, "SSID", NULL, &ssidSize);
-  size_t pwSize;
-  WiFiPrefsError |= nvs_get_str(WiFiHandle, "PW", NULL, &pwSize);
-  uint8_t authMode;
-  WiFiPrefsError |= nvs_get_u8(WiFiHandle, "AuthMode", &authMode);
+  if (nvs_open(nvsWiFi, NVS_READWRITE, &WiFiHandle) == ESP_OK) {
+    size_t ssidSize;
+    esp_err_t WiFiPrefsError = nvs_get_str(WiFiHandle, ssidTag, NULL, &ssidSize);
+    size_t pwSize;
+    WiFiPrefsError |= nvs_get_str(WiFiHandle, passTag, NULL, &pwSize);
+    uint8_t authMode;
+    WiFiPrefsError |= nvs_get_u8(WiFiHandle, authTag, &authMode);
 
-  if (WiFiPrefsError == ESP_ERR_NVS_NOT_FOUND) {
-    // Make the RGB LED a certain color (Blue?)
-    nvs_close(WiFiHandle);
-    initialSetup();
-  } else if (WiFiPrefsError == ESP_OK) {
-    char ssid[ssidSize];
-    nvs_get_str(WiFiHandle, "SSID", ssid, &ssidSize);
-    char pw[pwSize];
-    nvs_get_str(WiFiHandle, "PW", pw, &pwSize);
-    nvs_close(WiFiHandle);
-    // TODO: add enterprise support
-    if (!bmWiFi.attemptConnect(ssid, pw, (wifi_auth_mode_t)authMode)) {
+    if (WiFiPrefsError == ESP_ERR_NVS_NOT_FOUND) {
+      // Make the RGB LED a certain color (Blue?)
+      nvs_close(WiFiHandle);
+      initialSetup();
+    } else if (WiFiPrefsError == ESP_OK) {
+      char ssid[ssidSize];
+      nvs_get_str(WiFiHandle, ssidTag, ssid, &ssidSize);
+      char pw[pwSize];
+      nvs_get_str(WiFiHandle, passTag, pw, &pwSize);
+      nvs_close(WiFiHandle);
+      // TODO: add enterprise support
+      if (!bmWiFi.attemptConnect(ssid, pw, (wifi_auth_mode_t)authMode)) {
+        // Make RGB LED certain color (Blue?)
+        initialSetup();
+      }
+    } else {
       // Make RGB LED certain color (Blue?)
+      nvs_close(WiFiHandle);
+      printf("Program error in Wifi Connection\n");
       initialSetup();
     }
-  } else {
-    // Make RGB LED certain color (Blue?)
-    nvs_close(WiFiHandle);
-    printf("Program error in Wifi Connection\n");
-    initialSetup();
+  }
+  else {
+    printf("ERROR: Couldn't open wifi NVS segment\nProgram stopped.\n");
+    while (1) {
+      vTaskDelay(pdMS_TO_TICKS(500));
+    }
   }
 
   // Main loop

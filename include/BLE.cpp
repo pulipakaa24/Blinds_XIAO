@@ -1,6 +1,8 @@
 #include "BLE.hpp"
 #include "NimBLEDevice.h"
 #include "WiFi.hpp"
+#include "nvs_flash.h"
+#include "defines.h"
 
 std::atomic<bool> flag_scan_requested{false};
 std::atomic<bool> credsGiven{false};
@@ -106,7 +108,21 @@ bool BLEtick(NimBLEAdvertising* pAdvertising) {
     else wifiConnect = bmWiFi.attemptConnect(tmpSSID.c_str(), tmpPASS.c_str(), tmpAUTH);
     if (!wifiConnect) return false;
 
-    // save wifi credentials here
+    nvs_handle_t WiFiHandle;
+    esp_err_t err = nvs_open(nvsWiFi, NVS_READWRITE, &WiFiHandle);
+    if (err != ESP_OK) {
+      printf("ERROR Saving Credentials\n");
+      return false;
+    }
+    else {
+      err = nvs_set_str(WiFiHandle, ssidTag, tmpSSID.c_str());
+      if (err == ESP_OK) err = nvs_set_str(WiFiHandle, passTag, tmpPASS.c_str());
+      if (err == ESP_OK) err = nvs_set_str(WiFiHandle, unameTag, tmpUNAME.c_str());
+      if (err == ESP_OK) err = nvs_set_u8(WiFiHandle, authTag, (uint8_t)tmpAUTH);
+      if (err == ESP_OK) nvs_commit(WiFiHandle);
+      nvs_close(WiFiHandle);
+    }
+    
     // Authenticate with server here
   }
   return false;

@@ -7,6 +7,11 @@
 
 #define ccwMax 10
 #define cwMax 0
+#define nvsWiFi "WiFiCreds"
+#define ssidTag "SSID"
+#define passTag "PW"
+#define authTag "AuthMode"
+#define unameTag "UNAME"
 
 #define getMovingCW(port) ((movingCW & (1 << port)) >> port)
 #define setMovingCW(port) (movingCW |= (1 << port))
