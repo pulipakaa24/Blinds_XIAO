@@ -3,7 +3,7 @@
 #include "cJSON.h" // Native replacement for ArduinoJson
 #include "BLE.hpp"
 
-bool WiFi::authFailed = false;
+std::atomic<bool> WiFi::authFailed{false};
 EventGroupHandle_t WiFi::s_wifi_event_group = NULL;
 esp_netif_t* WiFi::netif = NULL;
 esp_event_handler_instance_t WiFi::instance_any_id = NULL;
@@ -49,6 +49,13 @@ void WiFi::event_handler(void* arg, esp_event_base_t event_base,
     }
     xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
   } 
+  else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE) {
+        // This is triggered when the scan finishes!
+        printf("Scan complete, processing results...\n");
+        
+        // Call a function to process results and notify BLE
+        processScanResults();
+    }
   // 3. We got an IP Address -> Success!
   else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
@@ -62,7 +69,7 @@ void WiFi::init() {
   // 1. Init Network Interface
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
-  esp_netif_create_default_wifi_sta();
+  netif = esp_netif_create_default_wifi_sta();
 
   // 2. Init WiFi Driver
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -155,6 +162,11 @@ bool WiFi::awaitConnected() {
 
   uint8_t attempts = 0;
   while (!isConnected() && attempts < 20) {
+    if (!isBLEClientConnected) {
+      printf("BLE Disconnected: Aborting WiFi connection attempt.\n");
+      esp_wifi_disconnect(); 
+      return false;
+    }
     if (authFailed) {
       printf("SSID/Password was wrong! Aborting connection attempt.\n");
       return false;
@@ -167,24 +179,29 @@ bool WiFi::awaitConnected() {
 }
 
 // ------------- non-class --------------
-void scanAndUpdateSSIDList() {
+void WiFi::scanAndUpdateSSIDList() {
   printf("Starting WiFi Scan...\n");
 
   // 1. Start Scan (Blocking Mode = true)
   // In blocking mode, this function waits here until scan is done (~2 seconds)
+  esp_wifi_sta_enterprise_disable();
+  esp_wifi_disconnect();
+
   wifi_scan_config_t scan_config = {
       .ssid = NULL,
       .bssid = NULL,
       .channel = 0,
       .show_hidden = false
   };
-  esp_err_t err = esp_wifi_scan_start(&scan_config, true);
+  esp_err_t err = esp_wifi_scan_start(&scan_config, false);
   
   if (err != ESP_OK) {
       printf("Scan failed!\n");
       return;
   }
+}
 
+void WiFi::processScanResults() {
   // 2. Get the results
   uint16_t ap_count = 0;
   esp_wifi_scan_get_ap_num(&ap_count);
@@ -199,14 +216,14 @@ void scanAndUpdateSSIDList() {
   cJSON *root = cJSON_CreateArray();
 
   for (int i = 0; i < ap_count; i++) {
-      cJSON *item = cJSON_CreateObject();
-      // ESP-IDF stores SSID as uint8_t, cast to char*
-      cJSON_AddStringToObject(item, "ssid", (char *)ap_list[i].ssid);
-      cJSON_AddNumberToObject(item, "rssi", ap_list[i].rssi);
-      // Add encryption type if you want (optional)
-      cJSON_AddNumberToObject(item, "auth", ap_list[i].authmode);
-      
-      cJSON_AddItemToArray(root, item);
+    cJSON *item = cJSON_CreateObject();
+    // ESP-IDF stores SSID as uint8_t, cast to char*
+    cJSON_AddStringToObject(item, "ssid", (char *)ap_list[i].ssid);
+    cJSON_AddNumberToObject(item, "rssi", ap_list[i].rssi);
+    // Add encryption type if you want (optional)
+    cJSON_AddNumberToObject(item, "auth", ap_list[i].authmode);
+    
+    cJSON_AddItemToArray(root, item);
   }
 
   // 4. Convert to String
@@ -215,11 +232,12 @@ void scanAndUpdateSSIDList() {
 
   // 5. Update BLE
   if (ssidListChar != nullptr) {
-      ssidListChar->setValue(std::string(json_string));
-      ssidListChar->notify();
+    ssidListChar->setValue(json_string);
+    ssidRefreshChar->setValue("Ready");
+    ssidRefreshChar->notify();
   }
 
-  // 6. Cleanup Memory (CRITICAL in C++)
+  // 6. Cleanup Memory
   free(ap_list);
   cJSON_Delete(root); // This deletes all children (items) too
   free(json_string);  // cJSON_Print allocates memory, you must free it

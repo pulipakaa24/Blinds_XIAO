@@ -12,6 +12,8 @@
 #define passTag "PW"
 #define authTag "AuthMode"
 #define unameTag "UNAME"
+#define nvsAuth "AUTH"
+#define tokenTag "TOKEN"
 
 #define getMovingCW(port) ((movingCW & (1 << port)) >> port)
 #define setMovingCW(port) (movingCW |= (1 << port))

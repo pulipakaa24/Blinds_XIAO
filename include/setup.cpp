@@ -5,8 +5,7 @@
 void initialSetup() {
   NimBLEAdvertising* pAdv = initBLE();
 
-  while (1) { // try to connect to wifi too.
-    BLEtick(pAdv);
+  while (!BLEtick(pAdv)) {
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
