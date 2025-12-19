@@ -8,8 +8,8 @@
 #include "esp_wifi_types.h"
 
 // Global pointers to characteristics for notification support
-extern NimBLECharacteristic* ssidListChar;
-extern NimBLECharacteristic* ssidRefreshChar;
+extern std::atomic<NimBLECharacteristic*> ssidListChar;
+extern std::atomic<NimBLECharacteristic*> ssidRefreshChar;
 extern std::atomic<bool> isBLEClientConnected;
 
 class MyServerCallbacks : public NimBLEServerCallbacks {

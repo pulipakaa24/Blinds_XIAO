@@ -20,12 +20,12 @@ static std::string PASS = "";
 static std::string UNAME = "";
 
 // Global pointers to characteristics for notification support
-NimBLECharacteristic* ssidListChar = nullptr;
-NimBLECharacteristic* connectConfirmChar = nullptr;
-NimBLECharacteristic* authConfirmChar = nullptr;
-NimBLECharacteristic* credsChar = nullptr;
-NimBLECharacteristic* tokenChar = nullptr;
-NimBLECharacteristic* ssidRefreshChar = nullptr;
+std::atomic<NimBLECharacteristic*> ssidListChar = nullptr;
+std::atomic<NimBLECharacteristic*> connectConfirmChar = nullptr;
+std::atomic<NimBLECharacteristic*> authConfirmChar = nullptr;
+std::atomic<NimBLECharacteristic*> credsChar = nullptr;
+std::atomic<NimBLECharacteristic*> tokenChar = nullptr;
+std::atomic<NimBLECharacteristic*> ssidRefreshChar = nullptr;
 
 NimBLEAdvertising* initBLE() {
   NimBLEDevice::init("BlindMaster-C6");
@@ -51,7 +51,7 @@ NimBLEAdvertising* initBLE() {
                     "0000",
                     NIMBLE_PROPERTY::READ
                   );
-  ssidListChar->createDescriptor("2902"); // Add BLE2902 descriptor for notifications
+  ssidListChar.load()->createDescriptor("2902"); // Add BLE2902 descriptor for notifications
   
   // 0x0001 - Credentials JSON (WRITE) - Replaces separate SSID/Password/Uname
   // Expected JSON format: {"ssid":"network","password":"pass"}
@@ -59,35 +59,35 @@ NimBLEAdvertising* initBLE() {
                                       "0001",
                                       NIMBLE_PROPERTY::WRITE
                                     );
-  credsChar->setCallbacks(charCallbacks);
+  credsChar.load()->setCallbacks(charCallbacks);
 
   // 0x0002 - Token (WRITE)
   tokenChar = pService->createCharacteristic(
                                       "0002",
                                       NIMBLE_PROPERTY::WRITE
                                     );
-  tokenChar->setCallbacks(charCallbacks);
+  tokenChar.load()->setCallbacks(charCallbacks);
 
   // 0x0003 - Auth Confirmation (READ + NOTIFY)
   authConfirmChar = pService->createCharacteristic(
                           "0003",
                           NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
                         );
-  authConfirmChar->createDescriptor("2902"); // Add BLE2902 descriptor for notifications
+  authConfirmChar.load()->createDescriptor("2902"); // Add BLE2902 descriptor for notifications
   
   // 0x0004 - SSID Refresh (WRITE)
   ssidRefreshChar = pService->createCharacteristic(
                                             "0004",
                                             NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
                                           );
-  ssidRefreshChar->setCallbacks(charCallbacks);
+  ssidRefreshChar.load()->setCallbacks(charCallbacks);
   
   // 0x0005 - Connect Confirmation (READ + NOTIFY)
   connectConfirmChar = pService->createCharacteristic(
                           "0005",
                           NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
                         );
-  connectConfirmChar->createDescriptor("2902"); // Add BLE2902 descriptor for notifications
+  connectConfirmChar.load()->createDescriptor("2902"); // Add BLE2902 descriptor for notifications
 
   // Start
   pService->start();
@@ -106,14 +106,16 @@ NimBLEAdvertising* initBLE() {
 }
 
 void notifyConnectionStatus(bool success) {
-  connectConfirmChar->setValue(success ? "Connected" : "Error");
-  connectConfirmChar->notify();
-  connectConfirmChar->setValue("");  // Clear value after notify
+  NimBLECharacteristic* tmpConfChar = connectConfirmChar.load();
+  tmpConfChar->setValue(success ? "Connected" : "Error");
+  tmpConfChar->notify();
+  tmpConfChar->setValue("");  // Clear value after notify
 }
 void notifyAuthStatus(bool success) {
-  authConfirmChar->setValue(success ? "Authenticated" : "Error");
-  authConfirmChar->notify();
-  authConfirmChar->setValue("");  // Clear value after notify
+  NimBLECharacteristic* tmpConfChar = authConfirmChar.load();
+  tmpConfChar->setValue(success ? "Authenticated" : "Error");
+  tmpConfChar->notify();
+  tmpConfChar->setValue("");  // Clear value after notify
 }
 
 bool BLEtick(NimBLEAdvertising* pAdvertising) {
