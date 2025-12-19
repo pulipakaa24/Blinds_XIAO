@@ -122,7 +122,7 @@ bool BLEtick(NimBLEAdvertising* pAdvertising) {
     if (!scanBlock) {
       scanBlock = true;
       printf("Scanning WiFi...\n");
-      scanAndUpdateSSIDList();
+      bmWiFi.scanAndUpdateSSIDList();
     }
     else printf("Duplicate scan request\n");
   }
@@ -233,7 +233,7 @@ void reset() {
   tokenGiven = false;
 }
 
-void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
+void MyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
   isBLEClientConnected = true;
   printf("Client connected\n");
   reset();
@@ -243,6 +243,10 @@ void MyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& conn
   isBLEClientConnected = false;
   printf("Client disconnected - reason: %d\n", reason);
   reset();
+}
+
+void MyCharCallbacks::onRead(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) {
+  printf("Characteristic Read\n");
 }
 
 void MyCharCallbacks::onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) {

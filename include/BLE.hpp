@@ -10,7 +10,7 @@
 // Global pointers to characteristics for notification support
 extern NimBLECharacteristic* ssidListChar;
 extern NimBLECharacteristic* ssidRefreshChar;
-extern std::atomic<bool> isBLEClientConnected{false};
+extern std::atomic<bool> isBLEClientConnected;
 
 class MyServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo);

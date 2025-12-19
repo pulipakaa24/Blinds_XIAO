@@ -232,7 +232,7 @@ void WiFi::processScanResults() {
 
   // 5. Update BLE
   if (ssidListChar != nullptr) {
-    ssidListChar->setValue(json_string);
+    ssidListChar->setValue(std::string(json_string));
     ssidRefreshChar->setValue("Ready");
     ssidRefreshChar->notify();
   }

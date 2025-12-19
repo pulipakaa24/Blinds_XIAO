@@ -3,6 +3,7 @@
 
 #include "esp_wifi.h"
 #include <string>
+#include <atomic>
 
 class WiFi {
   public:
