@@ -1,8 +1,34 @@
 dependencies:
+  bubblesnake/esp_socketio_client:
+    component_hash: 6f9d397a583384ca80779af0b2861b8cee99509a308f8b3f25524d8f4ba8f8f9
+    dependencies:
+    - name: espressif/esp_websocket_client
+      registry_url: https://components.espressif.com
+      require: public
+      version: '>=1.2.3'
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.0.0
+  espressif/esp_websocket_client:
+    component_hash: 723aba370113196c66321442426cd6452c351eef31c85c83bd1446831ef9f8f4
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.6.0
   idf:
     source:
       type: idf
     version: 5.5.1
-manifest_hash: 24b4d087511378b31aec46ab95615da067c81c6477aaa4515b222e977e29004a
+direct_dependencies:
+- bubblesnake/esp_socketio_client
+manifest_hash: d73c96c5d6ddd24707089a2953e50f36a12ebbc66b5458ada3d4f55c0987ccf1
 target: esp32c6
 version: 2.0.0

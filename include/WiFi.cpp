@@ -10,6 +10,7 @@ esp_event_handler_instance_t WiFi::instance_any_id = NULL;
 esp_event_handler_instance_t WiFi::instance_got_ip = NULL;
 
 #define WIFI_CONNECTED_BIT BIT0
+#define WIFI_STARTED_BIT BIT1
 
 WiFi bmWiFi;
 
@@ -17,8 +18,13 @@ WiFi bmWiFi;
 void WiFi::event_handler(void* arg, esp_event_base_t event_base,
                           int32_t event_id, void* event_data) {
   
+  // WiFi driver has finished initialization
+  if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+    printf("WiFi initialized and ready\n");
+    xEventGroupSetBits(s_wifi_event_group, WIFI_STARTED_BIT);
+  }
   // We got disconnected -> Retry automatically
-  if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+  else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
     // 1. Cast the data to the correct struct
     wifi_event_sta_disconnected_t* event = (wifi_event_sta_disconnected_t*) event_data;
     
@@ -29,11 +35,9 @@ void WiFi::event_handler(void* arg, esp_event_base_t event_base,
       case WIFI_REASON_AUTH_EXPIRE:               // Reason 2
       case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:    // Reason 15 (Most Common for Wrong Pass)
       case WIFI_REASON_BEACON_TIMEOUT:            // Reason 200
-      case WIFI_REASON_AUTH_FAIL:                 // Reason 203
-      case WIFI_REASON_ASSOC_FAIL:                // Reason 204
-      case WIFI_REASON_HANDSHAKE_TIMEOUT:         // Reason 205
+      case WIFI_REASON_AUTH_FAIL:                 // Reason 202
+      case WIFI_REASON_HANDSHAKE_TIMEOUT:         // Reason 204
         printf("ERROR: Likely Wrong Password!\n");
-        // OPTIONAL: Don't retry immediately if password is wrong
         authFailed = true;
         break;
           
@@ -41,10 +45,20 @@ void WiFi::event_handler(void* arg, esp_event_base_t event_base,
         printf("ERROR: SSID Not Found\n");
         authFailed = true;
         break;
+      
+      case WIFI_REASON_ASSOC_LEAVE:               // Reason 8 - Manual disconnect
+        printf("Manual disconnect, not retrying\n");
+        break;
+          
+      case WIFI_REASON_ASSOC_FAIL:                // Reason 203 (Can be AP busy/rate limiting)
+        printf("Association failed, will retry...\n");
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Wait 1 second before retry to avoid rate limiting
+        esp_wifi_connect();
+        break;
           
       default:
         printf("Retrying...\n");
-        esp_wifi_connect(); // Retry for other reasons (interference, etc)
+        esp_wifi_connect();
         break;
     }
     xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
@@ -95,6 +109,7 @@ void WiFi::init() {
   ));
 
   ESP_ERROR_CHECK(esp_wifi_start());
+  xEventGroupWaitBits(s_wifi_event_group, WIFI_STARTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
 }
 
 // --- CHECK STATUS ---
@@ -162,11 +177,6 @@ bool WiFi::awaitConnected() {
 
   uint8_t attempts = 0;
   while (!isConnected() && attempts < 20) {
-    if (!isBLEClientConnected) {
-      printf("BLE Disconnected: Aborting WiFi connection attempt.\n");
-      esp_wifi_disconnect(); 
-      return false;
-    }
     if (authFailed) {
       printf("SSID/Password was wrong! Aborting connection attempt.\n");
       return false;

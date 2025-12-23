@@ -2,6 +2,7 @@
 #include "NimBLEDevice.h"
 #include "WiFi.hpp"
 #include "nvs_flash.h"
+#include "socketIO.hpp"
 #include "defines.h"
 #include <mutex>
 #include "bmHTTP.hpp"
@@ -46,7 +47,7 @@ NimBLEAdvertising* initBLE() {
   // Create all characteristics with callbacks
   MyCharCallbacks* charCallbacks = new MyCharCallbacks();
   
-  // 0x0000 - SSID List (READ + NOTIFY)
+  // 0x0000 - SSID List (READ)
   ssidListChar = pService->createCharacteristic(
                     "0000",
                     NIMBLE_PROPERTY::READ
@@ -75,7 +76,7 @@ NimBLEAdvertising* initBLE() {
                         );
   authConfirmChar.load()->createDescriptor("2902"); // Add BLE2902 descriptor for notifications
   
-  // 0x0004 - SSID Refresh (WRITE)
+  // 0x0004 - SSID Refresh
   ssidRefreshChar = pService->createCharacteristic(
                                             "0004",
                                             NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
@@ -119,6 +120,7 @@ void notifyAuthStatus(bool success) {
 }
 
 bool BLEtick(NimBLEAdvertising* pAdvertising) {
+  printf("BleTick\n");
   if(flag_scan_requested) {
     flag_scan_requested = false;
     if (!scanBlock) {
@@ -229,6 +231,7 @@ bool BLEtick(NimBLEAdvertising* pAdvertising) {
 
 void reset() {
   esp_wifi_scan_stop();
+  if (!connected) esp_wifi_disconnect();
   scanBlock = false;
   flag_scan_requested = false;
   credsGiven = false;

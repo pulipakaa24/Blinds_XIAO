@@ -1,0 +1,2 @@
+dependencies:
+  bubblesnake/esp_socketio_client: "^1.0.0"

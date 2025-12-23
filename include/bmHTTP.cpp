@@ -17,29 +17,47 @@ bool httpGET(std::string endpoint, std::string token, cJSON* &JSONresponse) {
   std::string authHeader = "Bearer " + token;
   esp_http_client_set_header(client, "Authorization", authHeader.c_str());
   
-  esp_err_t err = esp_http_client_perform(client);
+  // Open connection and fetch headers
+  esp_err_t err = esp_http_client_open(client, 0);
   bool success = false;
 
   if (err == ESP_OK) {
+    int content_length = esp_http_client_fetch_headers(client);
     int status_code = esp_http_client_get_status_code(client);
-    int content_length = esp_http_client_get_content_length(client);
     
     printf("HTTP Status = %d, content_length = %d\n", status_code, content_length);
     
-    if (status_code == 200) {
-      std::string responseData = "";
-      char buffer[512]; // Read in 512-byte blocks
-      int read_len;
-
-      // Read until the server stops sending (read_len <= 0)
-      while ((read_len = esp_http_client_read(client, buffer, sizeof(buffer))) > 0) 
-        responseData.append(buffer, read_len);
-
-      if (!responseData.empty()) {
-        JSONresponse = cJSON_Parse(responseData.c_str());
+    if (status_code == 200 && content_length > 0) {
+      // Allocate buffer for the response
+      char *buffer = (char *)malloc(content_length + 1);
+      if (buffer) {
+        int total_read = 0;
+        int read_len;
+        
+        // Read the response body
+        while (total_read < content_length) {
+          read_len = esp_http_client_read(client, buffer + total_read, content_length - total_read);
+          if (read_len <= 0) break;
+          total_read += read_len;
+        }
+        
+        buffer[total_read] = '\0';
+        printf("Response body: %s\n", buffer);
+        
+        JSONresponse = cJSON_Parse(buffer);
         success = (JSONresponse != NULL);
+        
+        if (!success) {
+          printf("Failed to parse JSON\n");
+        }
+        
+        free(buffer);
+      } else {
+        printf("Failed to allocate buffer for response\n");
       }
     }
+    
+    esp_http_client_close(client);
   } else printf("HTTP request failed: %s\n", esp_err_to_name(err));
   
   esp_http_client_cleanup(client);
