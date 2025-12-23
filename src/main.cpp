@@ -95,6 +95,7 @@ extern "C" void app_main() {
   // Main loop
   while (1) {
     // Your main application logic here
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    printf("Main Loop\n");
   }
 }
