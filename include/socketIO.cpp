@@ -8,7 +8,7 @@
 static esp_socketio_client_handle_t io_client;
 static esp_socketio_packet_handle_t tx_packet = NULL;
 
-std::atomic<bool> statusResolved{false};
+std::atomic<bool> statusResolved{true};
 std::atomic<bool> connected{false};
 
 // Event handler for Socket.IO events
@@ -29,10 +29,9 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
             // Check if connected to default namespace
             char *nsp = esp_socketio_packet_get_nsp(packet);
             if (strcmp(nsp, "/") == 0) {
-                printf("Connected to default namespace\n");
+                printf("Connected to default namespace - waiting for device_init...\n");
             }
-            connected = true;
-            statusResolved = true;
+            // Don't set connected yet - wait for device_init message from server
             break;
         }
             
@@ -43,6 +42,82 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
             if (json) {
                 char *json_str = cJSON_Print(json);
                 printf("Data: %s\n", json_str);
+                
+                // Check if this is an array event
+                if (cJSON_IsArray(json) && cJSON_GetArraySize(json) >= 2) {
+                    cJSON *eventName = cJSON_GetArrayItem(json, 0);
+                    
+                    if (cJSON_IsString(eventName)) {
+                        // Handle error event
+                        if (strcmp(eventName->valuestring, "error") == 0) {
+                            printf("Received error message from server\n");
+                            cJSON *data = cJSON_GetArrayItem(json, 1);
+                            
+                            if (data) {
+                                cJSON *message = cJSON_GetObjectItem(data, "message");
+                                if (message && cJSON_IsString(message)) {
+                                    printf("Server error: %s\n", message->valuestring);
+                                }
+                            }
+                            
+                            // Mark connection as failed
+                            connected = false;
+                            statusResolved = true;
+                        }
+                        // Handle device_init event
+                        else if (strcmp(eventName->valuestring, "device_init") == 0) {
+                            printf("Received device_init message\n");
+                            cJSON *data = cJSON_GetArrayItem(json, 1);
+                            
+                            if (data) {
+                                cJSON *type = cJSON_GetObjectItem(data, "type");
+                                if (type && strcmp(type->valuestring, "success") == 0) {
+                                    printf("Device authenticated successfully\n");
+                                    
+                                    // Parse device state
+                                    cJSON *deviceState = cJSON_GetObjectItem(data, "deviceState");
+                                    if (cJSON_IsArray(deviceState)) {
+                                        int stateCount = cJSON_GetArraySize(deviceState);
+                                        printf("Device has %d peripheral(s):\n", stateCount);
+                                        
+                                        for (int i = 0; i < stateCount; i++) {
+                                            cJSON *periph = cJSON_GetArrayItem(deviceState, i);
+                                            int port = cJSON_GetObjectItem(periph, "port")->valueint;
+                                            int lastPos = cJSON_GetObjectItem(periph, "lastPos")->valueint;
+                                            bool awaitCalib = cJSON_IsTrue(cJSON_GetObjectItem(periph, "awaitCalib"));
+                                            bool calibrated = cJSON_IsTrue(cJSON_GetObjectItem(periph, "calibrated"));
+                                            // TODO: UPDATE MOTOR/ENCODER STATES BASED ON THIS, as well as the successive websocket updates.
+                                            printf("  Port %d: pos=%d, calibrated=%d, awaitCalib=%d\n",
+                                                   port, lastPos, calibrated, awaitCalib);
+                                        }
+                                    }
+                                    
+                                    // Now mark as connected
+                                    connected = true;
+                                    statusResolved = true;
+                                } else {
+                                    printf("Device authentication failed\n");
+                                    connected = false;
+                                    statusResolved = true;
+                                }
+                            }
+                        }
+                        // Handle device_deleted event
+                        else if (strcmp(eventName->valuestring, "device_deleted") == 0) {
+                            printf("Device has been deleted from account - disconnecting\n");
+                            cJSON *data = cJSON_GetArrayItem(json, 1);
+                            if (data) {
+                                cJSON *message = cJSON_GetObjectItem(data, "message");
+                                if (message && cJSON_IsString(message)) {
+                                    printf("Server message: %s\n", message->valuestring);
+                                }
+                            }
+                            connected = false;
+                            statusResolved = true;
+                        }
+                    }
+                }
+                
                 free(json_str);
             }
             break;
@@ -61,16 +136,18 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                 }
             }
             
-            // Disconnect and enter setup mode
-            printf("Disconnecting and entering setup mode...\n");
-            esp_socketio_client_close(io_client, pdMS_TO_TICKS(1000));
-
-            esp_socketio_client_destroy(io_client);
-            initialSetup();
+            // Set flags to indicate connection failure
             connected = false;
             statusResolved = true;
             break;
         }
+    }
+    
+    // Handle WebSocket-level disconnections
+    if (data->websocket_event_id == WEBSOCKET_EVENT_DISCONNECTED) {
+        printf("WebSocket disconnected\n");
+        connected = false;
+        statusResolved = true;
     }
 }
 
@@ -90,6 +167,18 @@ void initSocketIO() {
     
     esp_socketio_register_events(io_client, SOCKETIO_EVENT_ANY, socketio_event_handler, NULL);
     esp_socketio_client_start(io_client);
+}
+
+void stopSocketIO() {
+    if (io_client != NULL) {
+        printf("Stopping Socket.IO client...\n");
+        esp_socketio_client_close(io_client, pdMS_TO_TICKS(1000));
+        esp_socketio_client_destroy(io_client);
+        io_client = NULL;
+        tx_packet = NULL;
+        connected = false;
+        statusResolved = false;
+    }
 }
 
 // Function to emit 'calib_done' as expected by your server

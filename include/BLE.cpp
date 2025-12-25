@@ -12,6 +12,7 @@ std::atomic<bool> credsGiven{false};
 std::atomic<bool> tokenGiven{false};
 std::atomic<bool> isBLEClientConnected{false};
 std::atomic<bool> scanBlock{false};
+std::atomic<bool> finalAuth{false};
 std::mutex dataMutex;
 
 wifi_auth_mode_t auth;
@@ -29,6 +30,8 @@ std::atomic<NimBLECharacteristic*> tokenChar = nullptr;
 std::atomic<NimBLECharacteristic*> ssidRefreshChar = nullptr;
 
 NimBLEAdvertising* initBLE() {
+  finalAuth = false;
+  
   NimBLEDevice::init("BlindMaster-C6");
   
   // Optional: Boost power for better range (ESP32-C6 supports up to +20dBm)
@@ -101,7 +104,6 @@ NimBLEAdvertising* initBLE() {
   pAdvertising->start();
 
   printf("BLE Started. Waiting...\n");
-  flag_scan_requested = true;
 
   return pAdvertising;
 }
@@ -223,7 +225,9 @@ bool BLEtick(NimBLEAdvertising* pAdvertising) {
     } 
     else printf("Failed to parse JSON response\n");
 
+    finalAuth = true;
     notifyAuthStatus(success);
+    if (success) NimBLEDevice::deinit(true); // deinitialize BLE
     return success;
   }
   return false;
@@ -231,7 +235,7 @@ bool BLEtick(NimBLEAdvertising* pAdvertising) {
 
 void reset() {
   esp_wifi_scan_stop();
-  if (!connected) esp_wifi_disconnect();
+  if (!finalAuth) esp_wifi_disconnect();
   scanBlock = false;
   flag_scan_requested = false;
   credsGiven = false;
@@ -260,8 +264,13 @@ void MyCharCallbacks::onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connI
     
     printf("onWrite called! UUID: %s, Value length: %d\n", uuidStr.c_str(), val.length());
     
+    // Load atomic pointers for comparison
+    NimBLECharacteristic* currentCredsChar = credsChar.load();
+    NimBLECharacteristic* currentTokenChar = tokenChar.load();
+    NimBLECharacteristic* currentRefreshChar = ssidRefreshChar.load();
+    
     // Check which characteristic was written to
-    if (pChar == credsChar) {
+    if (pChar == currentCredsChar) {
       // Credentials JSON characteristic
       if (val.length() > 0) {
         printf("Received JSON: %s\n", val.c_str());
@@ -315,7 +324,7 @@ void MyCharCallbacks::onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connI
         }
       }
     }
-    else if (pChar == tokenChar) {
+    else if (pChar == currentTokenChar) {
       if (val.length() > 0) {
         printf("Received Token: %s\n", val.c_str());
         std::lock_guard<std::mutex> lock(dataMutex);
@@ -323,7 +332,7 @@ void MyCharCallbacks::onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connI
         tokenGiven = true;
       }
     }
-    else if (pChar == ssidRefreshChar) {
+    else if (pChar == currentRefreshChar) {
       if (val == "Start") {
         // Refresh characteristic
         printf("Refresh Requested\n");

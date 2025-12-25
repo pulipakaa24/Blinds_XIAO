@@ -8,6 +8,9 @@ extern std::atomic<bool> connected;
 // Initialize Socket.IO client and connect to server
 void initSocketIO();
 
+// Stop and destroy Socket.IO client
+void stopSocketIO();
+
 // Emit calibration done event to server
 void emitCalibDone(int port);
 

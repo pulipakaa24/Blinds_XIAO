@@ -2,5 +2,6 @@
 #define SETUP_H
 
 void initialSetup();
+void setupLoop();
 
 #endif

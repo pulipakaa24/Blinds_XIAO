@@ -29,6 +29,4 @@ class WiFi {
 
 extern WiFi bmWiFi;
 
-void scanAndUpdateSSIDList();
-
 #endif
