@@ -6,6 +6,7 @@
 #include "WiFi.hpp"
 #include "setup.hpp"
 #include "socketIO.hpp"
+#include "encoder.hpp"
 
 extern "C" void app_main() {
   printf("Hello ");
@@ -38,4 +39,23 @@ extern "C" void app_main() {
     vTaskDelay(pdMS_TO_TICKS(1000));
     printf("loop\n");
   }
+}
+
+void encoderTest() {
+  encoder_init();
+
+  int32_t prevCount = encoder_count;
+
+  while (1) {
+    if (encoder_count != prevCount) {
+      prevCount = encoder_count;
+      printf("Encoder Pos: %d\n", prevCount);
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+}
+
+extern "C" void app_main() {
+  // mainApp();
+  encoderTest();
 }
