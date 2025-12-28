@@ -1,5 +1,6 @@
 #ifndef DEFINES_H
 #define DEFINES_H
+#include "driver/gpio.h"
 
 #define ccwSpeed 6500
 #define cwSpeed 3300
@@ -14,6 +15,9 @@
 #define unameTag "UNAME"
 #define nvsAuth "AUTH"
 #define tokenTag "TOKEN"
+
+#define ENCODER_PIN_A GPIO_NUM_23
+#define ENCODER_PIN_B GPIO_NUM_16
 
 #define getMovingCW(port) ((movingCW & (1 << port)) >> port)
 #define setMovingCW(port) (movingCW |= (1 << port))

@@ -8,7 +8,7 @@
 #include "socketIO.hpp"
 #include "encoder.hpp"
 
-extern "C" void app_main() {
+void mainApp() {
   printf("Hello ");
   esp_err_t ret = nvs_flash_init(); // change to secure init logic soon!!
   // 2. If NVS is full or corrupt (common after flashing new code), erase and retry
