@@ -19,6 +19,10 @@ void mainApp() {
   ESP_ERROR_CHECK(ret);
 
   bmWiFi.init();
+  
+  // Create and initialize encoder
+  Encoder encoder(ENCODER_PIN_A, ENCODER_PIN_B);
+  encoder.init();
 
   setupLoop();
   
@@ -42,13 +46,16 @@ void mainApp() {
 }
 
 void encoderTest() {
-  encoder_init();
+  // Create encoder instance
+  Encoder encoder(ENCODER_PIN_A, ENCODER_PIN_B);
+  encoder.init();
 
-  int32_t prevCount = encoder_count;
+  int32_t prevCount = encoder.getCount();
 
   while (1) {
-    if (encoder_count != prevCount) {
-      prevCount = encoder_count;
+    int32_t currentCount = encoder.getCount();
+    if (currentCount != prevCount) {
+      prevCount = currentCount;
       printf("Encoder Pos: %d\n", prevCount);
     }
     vTaskDelay(pdMS_TO_TICKS(100));

@@ -1,76 +1,84 @@
 #include "encoder.hpp"
-#include "defines.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-#include "esp_pm.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_sleep.h"
-#include "soc/gpio_struct.h" // <--- REQUIRED for GPIO.in.val
+#include "soc/gpio_struct.h"
 
-volatile int32_t encoder_count = 0;
-static const char *TAG = "ENCODER_DEMO";
+static const char *TAG = "ENCODER";
 
-// --- THE SAFE ISR (RAM ONLY) ---
-static void IRAM_ATTR encoder_isr_handler(void* arg)
+// Constructor
+Encoder::Encoder(gpio_num_t pinA, gpio_num_t pinB) 
+    : pin_a(pinA), pin_b(pinB), count(0), 
+      last_state_a(0), last_state_b(0), last_count_base(0) {}
+
+// Static ISR - receives Encoder instance via arg
+void IRAM_ATTR Encoder::isr_handler(void* arg)
 {
-    static uint8_t last_state_a = 0;
-    static uint8_t last_state_b = 0;
-    static int8_t last_count_base = 0; 
-
-    // READ HARDWARE DIRECTLY: This effectively bypasses the Flash crash risk
+    Encoder* encoder = static_cast<Encoder*>(arg);
+    
+    // Read GPIO levels directly from hardware
     uint32_t gpio_levels = GPIO.in.val;
-    uint8_t current_a = (gpio_levels >> ENCODER_PIN_A) & 0x1;
-    uint8_t current_b = (gpio_levels >> ENCODER_PIN_B) & 0x1;
+    uint8_t current_a = (gpio_levels >> encoder->pin_a) & 0x1;
+    uint8_t current_b = (gpio_levels >> encoder->pin_b) & 0x1;
 
-    // LOGIC
-    if (current_a != last_state_a) {
+    // Quadrature decoding logic
+    if (current_a != encoder->last_state_a) {
         if (!current_a) { 
-            if (current_b) last_count_base++;
-            else last_count_base--;
+            if (current_b) encoder->last_count_base++;
+            else encoder->last_count_base--;
         }
         else { 
-            if (current_b) last_count_base--;
-            else last_count_base++;
+            if (current_b) encoder->last_count_base--;
+            else encoder->last_count_base++;
         }
     }
-    else if (current_b != last_state_b) {
+    else if (current_b != encoder->last_state_b) {
         if (!current_b) { 
-            if (current_a) last_count_base--;
-            else last_count_base++;
+            if (current_a) encoder->last_count_base--;
+            else encoder->last_count_base++;
         }
         else { 
-            if (current_a) last_count_base++;
-            else last_count_base--;
+            if (current_a) encoder->last_count_base++;
+            else encoder->last_count_base--;
         }
     }
-    if (last_count_base > 3) {
-      encoder_count += 1;
-      last_count_base -= 4;
+    
+    // Accumulate to full detent count
+    if (encoder->last_count_base > 3) {
+        encoder->count += 1;
+        encoder->last_count_base -= 4;
     }
-    else if (last_count_base < 0) {
-      encoder_count -= 1;
-      last_count_base += 4;
+    else if (encoder->last_count_base < 0) {
+        encoder->count -= 1;
+        encoder->last_count_base += 4;
     }
-    last_state_a = current_a;
-    last_state_b = current_b;
+    
+    encoder->last_state_a = current_a;
+    encoder->last_state_b = current_b;
 }
 
-void encoder_init(void)
+void Encoder::init()
 {
     gpio_config_t io_conf = {};
     io_conf.intr_type = GPIO_INTR_ANYEDGE;
-    io_conf.pin_bit_mask = (1ULL << ENCODER_PIN_A) | (1ULL << ENCODER_PIN_B);
+    io_conf.pin_bit_mask = (1ULL << pin_a) | (1ULL << pin_b);
     io_conf.mode = GPIO_MODE_INPUT;
-    // Internal Pull-ups prevent "floating" inputs waking the chip randomly
     io_conf.pull_up_en = GPIO_PULLUP_ENABLE; 
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
     gpio_config(&io_conf);
 
-    gpio_install_isr_service(ESP_INTR_FLAG_IRAM); // IRAM is vital for Sleep
+    // Install ISR service if not already installed
+    gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
 
-    gpio_isr_handler_add(ENCODER_PIN_A, encoder_isr_handler, NULL);
-    gpio_isr_handler_add(ENCODER_PIN_B, encoder_isr_handler, NULL);
+    // Attach ISR with THIS instance as argument
+    gpio_isr_handler_add(pin_a, Encoder::isr_handler, this);
+    gpio_isr_handler_add(pin_b, Encoder::isr_handler, this);
 
-    ESP_LOGI(TAG, "Encoder initialized with Sleep Wakeup support.");
+    ESP_LOGI(TAG, "Encoder initialized on pins %d and %d", pin_a, pin_b);
+}
+
+void Encoder::deinit()
+{
+    gpio_isr_handler_remove(pin_a);
+    gpio_isr_handler_remove(pin_b);
+    ESP_LOGI(TAG, "Encoder deinitialized");
 }

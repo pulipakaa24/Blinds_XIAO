@@ -19,6 +19,9 @@
 #define ENCODER_PIN_A GPIO_NUM_23
 #define ENCODER_PIN_B GPIO_NUM_16
 
+#define InputEnc_PIN_A GPIO_NUM_1
+#define InputEnc_PIN_B GPIO_NUM_2
+
 #define getMovingCW(port) ((movingCW & (1 << port)) >> port)
 #define setMovingCW(port) (movingCW |= (1 << port))
 #define clearMovingCW(port) (movingCW &= ~(1 << port))
