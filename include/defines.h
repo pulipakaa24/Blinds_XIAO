@@ -8,13 +8,19 @@
 
 #define ccwMax 10
 #define cwMax 0
+
 #define nvsWiFi "WiFiCreds"
 #define ssidTag "SSID"
 #define passTag "PW"
 #define authTag "AuthMode"
 #define unameTag "UNAME"
+
 #define nvsAuth "AUTH"
 #define tokenTag "TOKEN"
+
+#define nvsCalib "CALIB"
+#define UpMinusDownTicksTag "UPDOWN"
+#define statusTag "STATUS"
 
 #define ENCODER_PIN_A GPIO_NUM_23
 #define ENCODER_PIN_B GPIO_NUM_16

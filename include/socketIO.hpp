@@ -11,7 +11,9 @@ void initSocketIO();
 // Stop and destroy Socket.IO client
 void stopSocketIO();
 
-// Emit calibration done event to server
-void emitCalibDone(int port);
+// Emit calibration stage events to server
+void emitCalibStage1Ready(int port = 1);
+void emitCalibStage2Ready(int port = 1);
+void emitCalibDone(int port = 1);
 
 #endif // SOCKETIO_HPP

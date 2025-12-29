@@ -7,6 +7,14 @@
 #include "setup.hpp"
 #include "socketIO.hpp"
 #include "encoder.hpp"
+#include "calibration.hpp"
+
+// Global encoder instances
+Encoder topEnc(ENCODER_PIN_A, ENCODER_PIN_B);
+Encoder bottomEnc(InputEnc_PIN_A, InputEnc_PIN_B);
+
+// Global calibration instance
+Calibration calib(topEnc);
 
 void mainApp() {
   printf("Hello ");
@@ -19,17 +27,21 @@ void mainApp() {
   ESP_ERROR_CHECK(ret);
 
   bmWiFi.init();
+  calib.init();
   
-  // Create and initialize encoder
-  Encoder encoder(ENCODER_PIN_A, ENCODER_PIN_B);
-  encoder.init();
+  // Initialize encoders
+  topEnc.init();
+  bottomEnc.init();
 
   setupLoop();
   
   statusResolved = false;
 
+  int32_t prevCount = topEnc.getCount();
+  
   // Main loop
   while (1) {
+    // websocket disconnect/reconnect handling
     if (statusResolved) {
       if (!connected) {
         printf("Disconnected! Beginning setup loop.\n");
@@ -39,9 +51,14 @@ void mainApp() {
       else printf("Reconnected!\n");
       statusResolved = false;
     }
+
     // Your main application logic here
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    printf("loop\n");
+    int32_t currentCount = topEnc.getCount();
+    if (currentCount != prevCount) {
+      prevCount = currentCount;
+      printf("Encoder Pos: %d\n", prevCount);
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
@@ -63,6 +80,6 @@ void encoderTest() {
 }
 
 extern "C" void app_main() {
-  // mainApp();
-  encoderTest();
+  mainApp();
+  // encoderTest();
 }

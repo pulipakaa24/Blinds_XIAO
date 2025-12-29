@@ -1,11 +1,12 @@
 #ifndef ENCODER_H
 #define ENCODER_H
 #include "driver/gpio.h"
+#include <atomic>
 
 class Encoder {
 public:
     // Shared between ISR and main code
-    volatile int32_t count;
+    std::atomic<int32_t> count;
     
     // ISR-only state
     uint8_t last_state_a;
