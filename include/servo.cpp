@@ -10,16 +10,13 @@ std::atomic<bool> calibListen{false};
 std::atomic<int32_t> baseDiff{0};
 std::atomic<int32_t> target{0};
 
-Encoder* topEnc = nullptr;
-Encoder* bottomEnc = nullptr;
-
 std::atomic<bool> runningManual{false};
 std::atomic<bool> runningServer{false};
 std::atomic<bool> clearCalibFlag{false};
 std::atomic<bool> savePosFlag{false};
 std::atomic<bool> startLess{false};
 
-void servoInit(Encoder& bottom, Encoder& top) {
+void servoInit() {
   // LEDC timer configuration (C++ aggregate initialization)
   ledc_timer_config_t ledc_timer = {};
   ledc_timer.speed_mode = LEDC_LOW_SPEED_MODE;
@@ -39,9 +36,6 @@ void servoInit(Encoder& bottom, Encoder& top) {
   ledc_channel.duty = offSpeed; // Start off
   ledc_channel.hpoint = 0;
   ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
-
-  topEnc = &top;
-  bottomEnc = &bottom;
 
   // Configure servo power switch pin as output
   gpio_set_direction(servoSwitch, GPIO_MODE_OUTPUT);
@@ -203,12 +197,12 @@ void servoWandListen() {
     topEnc->wandListen = false;
   }
   else if (effDiff > 1) {
-    servoOn(CCW, manual);
     topEnc->wandListen = true;
+    servoOn(CCW, manual);
   }
   else if (effDiff < -1) {
-    servoOn(CW, manual);
     topEnc->wandListen = true;
+    servoOn(CW, manual);
   }
   else {
     servoOff();

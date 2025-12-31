@@ -9,19 +9,14 @@
 #define server 1
 #define manual 0
 
-extern Encoder* topEnc;
-extern Encoder* bottomEnc;
 extern std::atomic<bool> calibListen;
-extern std::atomic<bool> runningManual;
-extern std::atomic<bool> runningServer;
 extern std::atomic<bool> clearCalibFlag;
 extern std::atomic<bool> savePosFlag;
-extern std::atomic<bool> startLess;
 
-extern std::atomic<int32_t> baseDiff;
-extern std::atomic<int32_t> target;
+extern Encoder* topEnc;
+extern Encoder* bottomEnc;
 
-void servoInit(Encoder& bottom, Encoder& top);
+void servoInit();
 void servoOn(uint8_t dir, uint8_t manOrServer);
 void servoOff();
 void servoMainSwitch(uint8_t onOff);
@@ -37,7 +32,7 @@ void servoSavePos();
 int32_t servoReadPos();
 void stopServerRun();
 void servoWandListen();
-
+void servoServerListen();
 void runToAppPos(uint8_t appPos);
 
 #endif

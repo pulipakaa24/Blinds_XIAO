@@ -50,6 +50,7 @@ void IRAM_ATTR Encoder::isr_handler(void* arg)
     if (calibListen) servoCalibListen();
     if (encoder->feedWDog) esp_timer_restart(encoder->watchdog_handle, 500000);
     if (encoder->wandListen) servoWandListen();
+    if (encoder->serverListen) servoServerListen();
   }
   else if (encoder->last_count_base < 0) {
     encoder->count -= 1;
@@ -57,6 +58,7 @@ void IRAM_ATTR Encoder::isr_handler(void* arg)
     if (calibListen) servoCalibListen();
     if (encoder->feedWDog) esp_timer_restart(encoder->watchdog_handle, 500000);
     if (encoder->wandListen) servoWandListen();
+    if (encoder->serverListen) servoServerListen();
   }
   
   encoder->last_state_a = current_a;

@@ -296,28 +296,28 @@ static void emitSocketEvent(const char* eventName, cJSON* data) {
 }
 
 // Function to emit 'calib_done' as expected by your server
-void emitCalibDone(int port = 1) {
+void emitCalibDone(int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
   emitSocketEvent("calib_done", data);
 }
 
 // Function to emit 'calib_stage1_ready' to notify server device is ready for tilt up
-void emitCalibStage1Ready(int port = 1) {
+void emitCalibStage1Ready(int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
   emitSocketEvent("calib_stage1_ready", data);
 }
 
 // Function to emit 'calib_stage2_ready' to notify server device is ready for tilt down
-void emitCalibStage2Ready(int port = 1) {
+void emitCalibStage2Ready(int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
   emitSocketEvent("calib_stage2_ready", data);
 }
 
 // Function to emit 'report_calib_status' to tell server device's actual calibration state
-void emitCalibStatus(bool calibrated, int port = 1) {
+void emitCalibStatus(bool calibrated, int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
   cJSON_AddBoolToObject(data, "calibrated", calibrated);
@@ -325,7 +325,7 @@ void emitCalibStatus(bool calibrated, int port = 1) {
 }
 
 // Function to emit 'device_calib_error' to notify server of calibration failure
-void emitCalibError(const char* errorMessage, int port = 1) {
+void emitCalibError(const char* errorMessage, int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
   cJSON_AddStringToObject(data, "message", errorMessage);
@@ -333,7 +333,7 @@ void emitCalibError(const char* errorMessage, int port = 1) {
 }
 
 // Function to emit 'pos_hit' to notify server of position change
-void emitPosHit(int pos, int port = 1) {
+void emitPosHit(int pos, int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
   cJSON_AddNumberToObject(data, "pos", pos);

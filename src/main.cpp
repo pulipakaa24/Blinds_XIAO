@@ -10,8 +10,10 @@
 #include "calibration.hpp"
 
 // Global encoder instances
-Encoder topEnc(ENCODER_PIN_A, ENCODER_PIN_B);
-Encoder bottomEnc(InputEnc_PIN_A, InputEnc_PIN_B);
+Encoder* topEnc = new Encoder(ENCODER_PIN_A, ENCODER_PIN_B);
+Encoder* bottomEnc = new Encoder(InputEnc_PIN_A, InputEnc_PIN_B);
+
+// Global encoder pointers (used by servo.cpp)
 
 // Global calibration instance
 Calibration calib;
@@ -30,15 +32,15 @@ void mainApp() {
   calib.init();
   
   // Initialize encoders
-  topEnc.init();
-  bottomEnc.init();
-  servoInit(bottomEnc, topEnc);
+  topEnc->init();
+  bottomEnc->init();
+  servoInit();
 
   setupLoop();
   
   statusResolved = false;
 
-  int32_t prevCount = topEnc.getCount();
+  int32_t prevCount = topEnc->getCount();
   
   // Main loop
   while (1) {
@@ -63,7 +65,7 @@ void mainApp() {
       savePosFlag = false;
 
       // Send position update to server
-      uint8_t currentAppPos = calib.convertToAppPos(topEnc.getCount());
+      uint8_t currentAppPos = calib.convertToAppPos(topEnc->getCount());
       emitPosHit(currentAppPos);
       
       printf("Sent pos_hit: position %d\n", currentAppPos);
