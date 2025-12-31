@@ -43,6 +43,10 @@ void servoInit(Encoder& bottom, Encoder& top) {
   topEnc = &top;
   bottomEnc = &bottom;
 
+  // Configure servo power switch pin as output
+  gpio_set_direction(servoSwitch, GPIO_MODE_OUTPUT);
+  gpio_set_level(servoSwitch, 0); // Start with servo power off
+
   topEnc->count = servoReadPos();
   if (calib.getCalibrated()) initMainLoop();
 }
@@ -58,13 +62,13 @@ void servoOn(uint8_t dir, uint8_t manOrServer) {
 void servoOff() {
   ledc_set_duty(LEDC_LOW_SPEED_MODE, servoLEDCChannel, offSpeed);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, servoLEDCChannel);
-  servoMainSwitch(0);
   runningManual = false;
   runningServer = false;
+  servoMainSwitch(0);
 }
 
 void servoMainSwitch(uint8_t onOff) {
-  // To Be Implemented
+  gpio_set_level(servoSwitch, onOff ? 1 : 0);
 }
 
 bool servoInitCalib() {
