@@ -219,7 +219,8 @@ void servoServerListen() {
 
 void runToAppPos(uint8_t appPos) {
   // manual control takes precedence over remote control, always.
-  if (runningManual) return;
+  // also do not begin operation if not calibrated;
+  if (runningManual || !calib.getCalibrated()) return;
   servoOff();
 
   // allow servo position to settle

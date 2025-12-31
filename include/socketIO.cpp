@@ -94,6 +94,7 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                         bool deviceCalibrated = calib.getCalibrated();
                         emitCalibStatus(deviceCalibrated);
                         printf("  Reported calibrated=%d for port %d\n", deviceCalibrated, port);
+                        runToAppPos(lastPos);
                       }
                     }
                   }
