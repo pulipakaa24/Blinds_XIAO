@@ -1,5 +1,5 @@
-#ifndef BMHTTP
-#define BMHTTP
+#ifndef BMHTTP_H
+#define BMHTTP_H
 #include <string>
 #include "cJSON.h"
 

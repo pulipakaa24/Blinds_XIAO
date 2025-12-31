@@ -1,5 +1,5 @@
 #include <driver/gptimer.h>
-#include "pwm.h"
+#include "servo.hpp"
 #include "defines.h"
 #include "nvs_flash.h"
 #include "NimBLEDevice.h"
@@ -14,7 +14,7 @@ Encoder topEnc(ENCODER_PIN_A, ENCODER_PIN_B);
 Encoder bottomEnc(InputEnc_PIN_A, InputEnc_PIN_B);
 
 // Global calibration instance
-Calibration calib(topEnc);
+Calibration calib;
 
 void mainApp() {
   printf("Hello ");
@@ -32,6 +32,7 @@ void mainApp() {
   // Initialize encoders
   topEnc.init();
   bottomEnc.init();
+  servoInit(bottomEnc, topEnc);
 
   setupLoop();
   
@@ -52,11 +53,20 @@ void mainApp() {
       statusResolved = false;
     }
 
-    // Your main application logic here
-    int32_t currentCount = topEnc.getCount();
-    if (currentCount != prevCount) {
-      prevCount = currentCount;
-      printf("Encoder Pos: %d\n", prevCount);
+    if (clearCalibFlag) {
+      calib.clearCalibrated();
+      emitCalibStatus(false);
+      clearCalibFlag = false;
+    }
+    if (savePosFlag) {
+      servoSavePos();
+      savePosFlag = false;
+
+      // Send position update to server
+      uint8_t currentAppPos = calib.convertToAppPos(topEnc.getCount());
+      emitPosHit(currentAppPos);
+      
+      printf("Sent pos_hit: position %d\n", currentAppPos);
     }
     vTaskDelay(pdMS_TO_TICKS(100));
   }

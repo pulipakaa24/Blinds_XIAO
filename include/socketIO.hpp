@@ -12,8 +12,11 @@ void initSocketIO();
 void stopSocketIO();
 
 // Emit calibration stage events to server
+void emitCalibStatus(bool calibrated, int port = 1);
 void emitCalibStage1Ready(int port = 1);
 void emitCalibStage2Ready(int port = 1);
 void emitCalibDone(int port = 1);
+void emitCalibError(const char* errorMessage, int port = 1);
+void emitPosHit(int pos, int port = 1);
 
 #endif // SOCKETIO_HPP

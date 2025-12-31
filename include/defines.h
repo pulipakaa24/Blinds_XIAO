@@ -1,6 +1,7 @@
 #ifndef DEFINES_H
 #define DEFINES_H
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 
 #define ccwSpeed 6500
 #define cwSpeed 3300
@@ -19,14 +20,21 @@
 #define tokenTag "TOKEN"
 
 #define nvsCalib "CALIB"
-#define UpMinusDownTicksTag "UPDOWN"
+#define UpTicksTag "UP"
+#define DownTicksTag "DOWN"
 #define statusTag "STATUS"
+
+#define nvsServo "SERVO"
+#define posTag "POS"
 
 #define ENCODER_PIN_A GPIO_NUM_23
 #define ENCODER_PIN_B GPIO_NUM_16
 
 #define InputEnc_PIN_A GPIO_NUM_1
 #define InputEnc_PIN_B GPIO_NUM_2
+
+#define servoPin GPIO_NUM_20
+#define servoLEDCChannel LEDC_CHANNEL_0
 
 #define getMovingCW(port) ((movingCW & (1 << port)) >> port)
 #define setMovingCW(port) (movingCW |= (1 << port))

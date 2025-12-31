@@ -6,18 +6,17 @@
 class Calibration {
   public:
     void init();
-    void beginDownwardCalib() {startTicks = topEnc.getCount();}
-    bool completeCalib();
-    int32_t convertToTicks(int8_t steps10);
+    bool beginDownwardCalib(Encoder& topEnc);
+    bool completeCalib(Encoder& topEnc);
+    int32_t convertToTicks(uint8_t appPos);
+    uint8_t convertToAppPos(int32_t ticks);
     bool getCalibrated() {return calibrated;}
-    void clearCalibrated();
-    Calibration(Encoder& enc):topEnc(enc) {};
+    bool clearCalibrated();
+    std::atomic<int32_t> DownTicks;
+    std::atomic<int32_t> UpTicks;
 
   private:
     std::atomic<bool> calibrated;
-    std::atomic<int32_t> UpMinusDownTicks;
-    int32_t startTicks;
-    Encoder& topEnc;
 };
 
 extern Calibration calib;

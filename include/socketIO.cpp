@@ -5,6 +5,7 @@
 #include "setup.hpp"
 #include "cJSON.h"
 #include "calibration.hpp"
+#include "servo.hpp"
 
 static esp_socketio_client_handle_t io_client;
 static esp_socketio_packet_handle_t tx_packet = NULL;
@@ -85,11 +86,15 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                       cJSON *periph = cJSON_GetArrayItem(deviceState, i);
                       int port = cJSON_GetObjectItem(periph, "port")->valueint;
                       int lastPos = cJSON_GetObjectItem(periph, "lastPos")->valueint;
-                      bool calibrated = cJSON_IsTrue(cJSON_GetObjectItem(periph, "calibrated"));
                       // TODO: UPDATE MOTOR/ENCODER STATES BASED ON THIS, as well as the successive websocket updates.
-                      printf("  Port %d: pos=%d, calibrated=%d, awaitCalib=%d\n",
-                              port, lastPos, calibrated);
-                      
+                      printf("  Port %d: pos=%d\n", port, lastPos);
+                      if (port != 1) printf("ERROR: NON-1 PORT RECEIVED\n");
+                      // Report back actual calibration status from device
+                      else {
+                        bool deviceCalibrated = calib.getCalibrated();
+                        emitCalibStatus(deviceCalibrated);
+                        printf("  Reported calibrated=%d for port %d\n", deviceCalibrated, port);
+                      }
                     }
                   }
                   
@@ -124,11 +129,13 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
               if (data) {
                 cJSON *port = cJSON_GetObjectItem(data, "port");
                 if (port && cJSON_IsNumber(port)) {
-                  if (port->valueint != 1)
+                  if (port->valueint != 1) {
                     printf("Error, non-1 port received for calibration\n");
+                    emitCalibError("Non-1 Port");
+                  }
                   else {
-                    calib.clearCalibrated();
-                    emitCalibStage1Ready();
+                    if (!servoInitCalib()) emitCalibError("Initialization failed");
+                    else emitCalibStage1Ready();
                   }
                 }
               }
@@ -141,11 +148,14 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
               if (data) {
                 cJSON *port = cJSON_GetObjectItem(data, "port");
                 if (port && cJSON_IsNumber(port)) {
-                  if (port->valueint != 1)
+                  if (port->valueint != 1) {
                     printf("Error, non-1 port received for calibration\n");
+                    emitCalibError("Non-1 Port");
+                  }
                    else {
-                    calib.beginDownwardCalib();
-                    emitCalibStage2Ready();
+                    if (!servoBeginDownwardCalib())
+                      emitCalibError("Direction Switch Failed");
+                    else emitCalibStage2Ready();
                    }
                 }
               }
@@ -158,12 +168,45 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
               if (data) {
                 cJSON *port = cJSON_GetObjectItem(data, "port");
                 if (port && cJSON_IsNumber(port)) {
-                  if (port->valueint != 1)
+                  if (port->valueint != 1) {
                     printf("Error, non-1 port received for calibration\n");
-                   else {
-                    calib.completeCalib();
-                    emitCalibDone();
-                   }
+                    emitCalibError("Non-1 port");
+                  }
+                  else {
+                    if (!servoCompleteCalib()) emitCalibError("Completion failed");
+                    else emitCalibDone();
+                  }
+                }
+              }
+            }
+            
+            // Handle server position change (manual or scheduled)
+            else if (strcmp(eventName->valuestring, "posUpdates") == 0) {
+              printf("Received position update from server\n");
+              cJSON *updateList = cJSON_GetArrayItem(json, 1);
+              
+              if (cJSON_IsArray(updateList)) {
+                int updateCount = cJSON_GetArraySize(updateList);
+                printf("Processing %d position update(s)\n", updateCount);
+                
+                for (int i = 0; i < updateCount; i++) {
+                  cJSON *update = cJSON_GetArrayItem(updateList, i);
+                  cJSON *periphNum = cJSON_GetObjectItem(update, "periphNum");
+                  cJSON *pos = cJSON_GetObjectItem(update, "pos");
+                  
+                  if (periphNum && cJSON_IsNumber(periphNum) && 
+                      pos && cJSON_IsNumber(pos)) {
+                    int port = periphNum->valueint;
+                    int position = pos->valueint;
+                    
+                    if (port != 1)
+                      printf("ERROR: Received position update for non-1 port: %d\n", port);
+                    else {
+                      printf("Position update: position %d\n", position);
+                      runToAppPos(position);
+                    }
+                  } 
+                  else printf("Invalid position update format\n");
                 }
               }
             }
@@ -233,66 +276,66 @@ void stopSocketIO() {
   }
 }
 
-// Function to emit 'calib_done' as expected by your server
-void emitCalibDone(int port) {
-  // Set packet header: EIO MESSAGE type, SIO EVENT type, default namespace "/"
+// Helper function to emit Socket.IO event with data
+static void emitSocketEvent(const char* eventName, cJSON* data) {
   if (esp_socketio_packet_set_header(tx_packet, EIO_PACKET_TYPE_MESSAGE, 
                                       SIO_PACKET_TYPE_EVENT, NULL, -1) == ESP_OK) {
-    // Create JSON array with event name and data
     cJSON *array = cJSON_CreateArray();
-    cJSON_AddItemToArray(array, cJSON_CreateString("calib_done"));
-    
-    cJSON *data = cJSON_CreateObject();
-    cJSON_AddNumberToObject(data, "port", port);
+    cJSON_AddItemToArray(array, cJSON_CreateString(eventName));
     cJSON_AddItemToArray(array, data);
     
-    // Set the JSON payload
     esp_socketio_packet_set_json(tx_packet, array);
-    
-    // Send the packet
     esp_socketio_client_send_data(io_client, tx_packet);
-    
-    // Reset packet for reuse
     esp_socketio_packet_reset(tx_packet);
     
     cJSON_Delete(array);
+  } else {
+    // If packet header setup failed, clean up the data object
+    cJSON_Delete(data);
   }
+}
+
+// Function to emit 'calib_done' as expected by your server
+void emitCalibDone(int port = 1) {
+  cJSON *data = cJSON_CreateObject();
+  cJSON_AddNumberToObject(data, "port", port);
+  emitSocketEvent("calib_done", data);
 }
 
 // Function to emit 'calib_stage1_ready' to notify server device is ready for tilt up
-void emitCalibStage1Ready(int port) {
-  if (esp_socketio_packet_set_header(tx_packet, EIO_PACKET_TYPE_MESSAGE, 
-                                      SIO_PACKET_TYPE_EVENT, NULL, -1) == ESP_OK) {
-    cJSON *array = cJSON_CreateArray();
-    cJSON_AddItemToArray(array, cJSON_CreateString("calib_stage1_ready"));
-    
-    cJSON *data = cJSON_CreateObject();
-    cJSON_AddNumberToObject(data, "port", port);
-    cJSON_AddItemToArray(array, data);
-    
-    esp_socketio_packet_set_json(tx_packet, array);
-    esp_socketio_client_send_data(io_client, tx_packet);
-    esp_socketio_packet_reset(tx_packet);
-    
-    cJSON_Delete(array);
-  }
+void emitCalibStage1Ready(int port = 1) {
+  cJSON *data = cJSON_CreateObject();
+  cJSON_AddNumberToObject(data, "port", port);
+  emitSocketEvent("calib_stage1_ready", data);
 }
 
 // Function to emit 'calib_stage2_ready' to notify server device is ready for tilt down
-void emitCalibStage2Ready(int port) {
-  if (esp_socketio_packet_set_header(tx_packet, EIO_PACKET_TYPE_MESSAGE, 
-                                      SIO_PACKET_TYPE_EVENT, NULL, -1) == ESP_OK) {
-    cJSON *array = cJSON_CreateArray();
-    cJSON_AddItemToArray(array, cJSON_CreateString("calib_stage2_ready"));
-    
-    cJSON *data = cJSON_CreateObject();
-    cJSON_AddNumberToObject(data, "port", port);
-    cJSON_AddItemToArray(array, data);
-    
-    esp_socketio_packet_set_json(tx_packet, array);
-    esp_socketio_client_send_data(io_client, tx_packet);
-    esp_socketio_packet_reset(tx_packet);
-    
-    cJSON_Delete(array);
-  }
+void emitCalibStage2Ready(int port = 1) {
+  cJSON *data = cJSON_CreateObject();
+  cJSON_AddNumberToObject(data, "port", port);
+  emitSocketEvent("calib_stage2_ready", data);
+}
+
+// Function to emit 'report_calib_status' to tell server device's actual calibration state
+void emitCalibStatus(bool calibrated, int port = 1) {
+  cJSON *data = cJSON_CreateObject();
+  cJSON_AddNumberToObject(data, "port", port);
+  cJSON_AddBoolToObject(data, "calibrated", calibrated);
+  emitSocketEvent("report_calib_status", data);
+}
+
+// Function to emit 'device_calib_error' to notify server of calibration failure
+void emitCalibError(const char* errorMessage, int port = 1) {
+  cJSON *data = cJSON_CreateObject();
+  cJSON_AddNumberToObject(data, "port", port);
+  cJSON_AddStringToObject(data, "message", errorMessage);
+  emitSocketEvent("device_calib_error", data);
+}
+
+// Function to emit 'pos_hit' to notify server of position change
+void emitPosHit(int pos, int port = 1) {
+  cJSON *data = cJSON_CreateObject();
+  cJSON_AddNumberToObject(data, "port", port);
+  cJSON_AddNumberToObject(data, "pos", pos);
+  emitSocketEvent("pos_hit", data);
 }
