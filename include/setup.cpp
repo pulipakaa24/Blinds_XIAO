@@ -26,7 +26,6 @@ void setupLoop() {
       WiFiPrefsError |= nvs_get_str(WiFiHandle, passTag, NULL, &pwSize);
       uint8_t authMode;
       WiFiPrefsError |= nvs_get_u8(WiFiHandle, authTag, &authMode);
-      printf("World\n");
       if (WiFiPrefsError == ESP_ERR_NVS_NOT_FOUND) {
         printf("Didn't find creds\n");
         // Make the RGB LED a certain color (Blue?)

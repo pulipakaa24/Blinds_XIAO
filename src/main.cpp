@@ -19,7 +19,6 @@ Encoder* bottomEnc = new Encoder(InputEnc_PIN_A, InputEnc_PIN_B);
 Calibration calib;
 
 void mainApp() {
-  printf("Hello ");
   esp_err_t ret = nvs_flash_init(); // change to secure init logic soon!!
   // 2. If NVS is full or corrupt (common after flashing new code), erase and retry
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
