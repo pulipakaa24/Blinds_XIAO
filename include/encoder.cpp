@@ -109,7 +109,7 @@ void Encoder::setupWatchdog() {
 
 void Encoder::pauseWatchdog() {
   feedWDog = false;
-  esp_timer_stop(watchdog_handle);
+  if (watchdog_handle != NULL) esp_timer_stop(watchdog_handle);
 }
 
 Encoder::~Encoder() {

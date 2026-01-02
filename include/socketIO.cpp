@@ -104,6 +104,8 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                   statusResolved = true;
                 } else {
                   printf("Device authentication failed\n");
+                  calib.clearCalibrated();
+                  deleteWiFiAndTokenDetails();
                   connected = false;
                   statusResolved = true;
                 }
@@ -119,6 +121,8 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                   printf("Server message: %s\n", message->valuestring);
                 }
               }
+              calib.clearCalibrated();
+              deleteWiFiAndTokenDetails();
               connected = false;
               statusResolved = true;
             }

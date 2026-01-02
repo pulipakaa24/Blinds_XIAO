@@ -66,6 +66,12 @@ void servoMainSwitch(uint8_t onOff) {
 }
 
 bool servoInitCalib() {
+  topEnc->pauseWatchdog();
+
+  // get ready for calibration by clearing all these listeners
+  bottomEnc->wandListen = false;
+  topEnc->wandListen = false;
+  topEnc->serverListen = false;
   if (!calib.clearCalibrated()) return false;
   if (topEnc == nullptr || bottomEnc == nullptr) {
     printf("ERROR: CALIBRATION STARTED BEFORE SERVO INITIALIZATION\n");
@@ -138,6 +144,7 @@ void servoSavePos() {
     if (nvs_set_i32(servoHandle, posTag, topCount) != ESP_OK)
       printf("Error saving current position\n");
     else printf("Success - Current position saved as: %d\n", topCount);
+    nvs_commit(servoHandle);
     nvs_close(servoHandle);
   }
   else {

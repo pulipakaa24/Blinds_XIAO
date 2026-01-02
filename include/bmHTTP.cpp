@@ -1,5 +1,7 @@
 #include "bmHTTP.hpp"
 #include "esp_http_client.h"
+#include "nvs_flash.h"
+#include "defines.h"
 #define httpSrv "http://192.168.1.190:3000/"
 
 std::string webToken;
@@ -62,4 +64,28 @@ bool httpGET(std::string endpoint, std::string token, cJSON* &JSONresponse) {
   
   esp_http_client_cleanup(client);
   return success;
+}
+
+void deleteWiFiAndTokenDetails() {
+  nvs_handle_t wifiHandle;
+  if (nvs_open(nvsWiFi, NVS_READWRITE, &wifiHandle) == ESP_OK) {
+    if (nvs_erase_all(wifiHandle) == ESP_OK) {
+      printf("Successfully erased WiFi details\n");
+      nvs_commit(wifiHandle);
+    }
+    else printf("ERROR: Erase wifi failed\n");
+    nvs_close(wifiHandle);
+  }
+  else printf("ERROR: Failed to open WiFi section for deletion\n");
+  
+  nvs_handle_t authHandle;
+  if (nvs_open(nvsAuth, NVS_READWRITE, &authHandle) == ESP_OK) {
+    if (nvs_erase_all(authHandle) == ESP_OK) {
+      printf("Successfully erased Auth details\n");
+      nvs_commit(authHandle);
+    }
+    else printf("ERROR: Erase auth failed\n");
+    nvs_close(authHandle);
+  }
+  else printf("ERROR: Failed to open Auth section for deletion\n");
 }

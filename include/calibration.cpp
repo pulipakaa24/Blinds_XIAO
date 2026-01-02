@@ -40,6 +40,7 @@ bool Calibration::clearCalibrated() {
       printf("Error saving calibration status as false.\n");
       return false;
     }
+    nvs_commit(calibHandle);
     nvs_close(calibHandle);
   }
   else {
@@ -56,6 +57,7 @@ bool Calibration::beginDownwardCalib(Encoder& topEnc) {
     if (nvs_set_i32(calibHandle, UpTicksTag, tempUpTicks) == ESP_OK) {
       printf("Saved UpTicks to NVS\n");
       UpTicks = tempUpTicks;
+      nvs_commit(calibHandle);
     }
     else {
       printf("Error saving UpTicks.\n");
@@ -88,6 +90,7 @@ bool Calibration::completeCalib(Encoder& topEnc) {
     DownTicks = tempDownTicks;
     calibrated = true;
     printf("Range: %d - %d\n", UpTicks.load(), tempDownTicks);
+    nvs_commit(calibHandle);
     nvs_close(calibHandle);
   }
   else {

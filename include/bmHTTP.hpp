@@ -7,4 +7,6 @@ extern std::string webToken;
 
 bool httpGET(std::string endpoint, std::string token, cJSON* &JSONresponse);
 
+void deleteWiFiAndTokenDetails();
+
 #endif
