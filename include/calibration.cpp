@@ -10,7 +10,7 @@ void Calibration::init() {
     uint8_t tempCalib;
     esp_err_t err = ESP_OK;
     err |= nvs_get_i32(calibHandle, UpTicksTag, &tempUpTicks);
-    err |= nvs_get_i32(calibHandle, DownTicksTag, &tempUpTicks);
+    err |= nvs_get_i32(calibHandle, DownTicksTag, &tempDownTicks);
     err |= nvs_get_u8(calibHandle, statusTag, &tempCalib);
     if (err == ESP_OK) {
       UpTicks = tempUpTicks;

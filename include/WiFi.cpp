@@ -220,6 +220,10 @@ void WiFi::processScanResults() {
   if (ap_count > 10) ap_count = 10;
 
   wifi_ap_record_t *ap_list = (wifi_ap_record_t *)malloc(sizeof(wifi_ap_record_t) * ap_count);
+  if (ap_list == NULL) {
+    printf("Heap allocation error in processScanResults\n");
+    return;
+  }
   ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&ap_count, ap_list));
 
   // 3. Build JSON using cJSON
