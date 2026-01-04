@@ -91,7 +91,7 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                       if (port != 1) printf("ERROR: NON-1 PORT RECEIVED\n");
                       // Report back actual calibration status from device
                       else {
-                        bool deviceCalibrated = calib.getCalibrated();
+                        bool deviceCalibrated = Calibration::getCalibrated();
                         emitCalibStatus(deviceCalibrated);
                         printf("  Reported calibrated=%d for port %d\n", deviceCalibrated, port);
                         runToAppPos(lastPos);
@@ -104,7 +104,7 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                   xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_CONNECTED);
                 } else {
                   printf("Device authentication failed\n");
-                  calib.clearCalibrated();
+                  Calibration::clearCalibrated();
                   deleteWiFiAndTokenDetails();
                   connected = false;
                   xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_DISCONNECTED);
@@ -121,7 +121,7 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                   printf("Server message: %s\n", message->valuestring);
                 }
               }
-              calib.clearCalibrated();
+              Calibration::clearCalibrated();
               deleteWiFiAndTokenDetails();
               connected = false;
               xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_DISCONNECTED);

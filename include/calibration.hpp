@@ -5,20 +5,18 @@
 
 class Calibration {
   public:
-    void init();
-    bool beginDownwardCalib(Encoder& topEnc);
-    bool completeCalib(Encoder& topEnc);
-    int32_t convertToTicks(uint8_t appPos);
-    uint8_t convertToAppPos(int32_t ticks);
-    bool getCalibrated() {return calibrated;}
-    bool clearCalibrated();
-    std::atomic<int32_t> DownTicks;
-    std::atomic<int32_t> UpTicks;
+    static void init();
+    static bool beginDownwardCalib(Encoder& topEnc);
+    static bool completeCalib(Encoder& topEnc);
+    static int32_t convertToTicks(uint8_t appPos);
+    static uint8_t convertToAppPos(int32_t ticks);
+    static bool getCalibrated() {return calibrated;}
+    static bool clearCalibrated();
+    static std::atomic<int32_t> DownTicks;
+    static std::atomic<int32_t> UpTicks;
 
   private:
-    std::atomic<bool> calibrated;
+    static std::atomic<bool> calibrated;
 };
-
-extern Calibration calib;
 
 #endif

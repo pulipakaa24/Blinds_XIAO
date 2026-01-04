@@ -42,7 +42,7 @@ void servoInit() {
   gpio_set_level(servoSwitch, 0); // Start with servo power off
 
   topEnc->count = servoReadPos();
-  if (calib.getCalibrated()) initMainLoop();
+  if (Calibration::getCalibrated()) initMainLoop();
 }
 
 void servoOn(uint8_t dir, uint8_t manOrServer) {
@@ -72,7 +72,7 @@ bool servoInitCalib() {
   bottomEnc->wandListen = false;
   topEnc->wandListen = false;
   topEnc->serverListen = false;
-  if (!calib.clearCalibrated()) return false;
+  if (!Calibration::clearCalibrated()) return false;
   if (topEnc == nullptr || bottomEnc == nullptr) {
     printf("ERROR: CALIBRATION STARTED BEFORE SERVO INITIALIZATION\n");
     return false;
@@ -93,7 +93,7 @@ bool servoBeginDownwardCalib() {
   calibListen = false;
   servoOff();
   vTaskDelay(pdMS_TO_TICKS(1000));
-  if (!calib.beginDownwardCalib(*topEnc)) return false;
+  if (!Calibration::beginDownwardCalib(*topEnc)) return false;
   baseDiff = bottomEnc->getCount() - topEnc->getCount();
   calibListen = true;
   return true;
@@ -103,7 +103,7 @@ bool servoCompleteCalib() {
   calibListen = false;
   servoOff();
   vTaskDelay(pdMS_TO_TICKS(1000));
-  if (!calib.completeCalib(*topEnc)) return false;
+  if (!Calibration::completeCalib(*topEnc)) return false;
   initMainLoop();
   return true;
 }
@@ -183,8 +183,8 @@ void servoWandListen() {
   stopServerRun();
 
   // freeze atomic values
-  int32_t upBound = calib.UpTicks;
-  int32_t downBound = calib.DownTicks;
+  int32_t upBound = Calibration::UpTicks;
+  int32_t downBound = Calibration::DownTicks;
   int32_t bottomCount = bottomEnc->getCount();
   int32_t topCount = topEnc->getCount();
 
@@ -231,13 +231,13 @@ void servoServerListen() {
 void runToAppPos(uint8_t appPos) {
   // manual control takes precedence over remote control, always.
   // also do not begin operation if not calibrated;
-  if (runningManual || !calib.getCalibrated()) return;
+  if (runningManual || !Calibration::getCalibrated()) return;
   servoOff();
 
   // allow servo position to settle
   vTaskDelay(pdMS_TO_TICKS(500));
   int32_t topCount = topEnc->getCount();
-  target = calib.convertToTicks(appPos); // calculate target encoder position
+  target = Calibration::convertToTicks(appPos); // calculate target encoder position
   if (abs(topCount - target) <= 1) return;
   startLess = topCount < target;
   if (runningManual) return; // check again before starting remote control

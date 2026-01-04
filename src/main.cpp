@@ -19,9 +19,6 @@ SemaphoreHandle_t g_calibration_mutex = NULL;
 Encoder* topEnc = new Encoder(ENCODER_PIN_A, ENCODER_PIN_B);
 Encoder* bottomEnc = new Encoder(InputEnc_PIN_A, InputEnc_PIN_B);
 
-// Global calibration instance
-Calibration calib;
-
 void mainTask(void* arg) {
   EventBits_t bits;
   
@@ -50,7 +47,7 @@ void mainTask(void* arg) {
     
     if (bits & EVENT_CLEAR_CALIB) {
       xSemaphoreTake(g_calibration_mutex, portMAX_DELAY);
-      calib.clearCalibrated();
+      Calibration::clearCalibrated();
       xSemaphoreGive(g_calibration_mutex);
       emitCalibStatus(false);
     }
@@ -59,7 +56,7 @@ void mainTask(void* arg) {
       servoSavePos();
 
       // Send position update to server
-      uint8_t currentAppPos = calib.convertToAppPos(topEnc->getCount());
+      uint8_t currentAppPos = Calibration::convertToAppPos(topEnc->getCount());
       emitPosHit(currentAppPos);
       
       printf("Sent pos_hit: position %d\n", currentAppPos);
@@ -106,8 +103,8 @@ extern "C" void app_main() {
   }
 
   // Initialize hardware
-  bmWiFi.init();
-  calib.init();
+  WiFi::init();
+  Calibration::init();
   
   // Initialize encoders
   topEnc->init();

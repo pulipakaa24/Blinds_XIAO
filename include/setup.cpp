@@ -42,7 +42,7 @@ void bleSetupTask(void* arg) {
       if (!scanBlock) {
         scanBlock = true;
         printf("Scanning WiFi...\n");
-        bmWiFi.scanAndUpdateSSIDList();
+        WiFi::scanAndUpdateSSIDList();
       }
       else printf("Duplicate scan request\n");
     }
@@ -61,9 +61,9 @@ void bleSetupTask(void* arg) {
       }
 
       bool wifiConnect;
-      if (tmpAUTH == WIFI_AUTH_WPA2_ENTERPRISE || tmpAUTH == WIFI_AUTH_WPA3_ENTERPRISE)
-        wifiConnect = bmWiFi.attemptConnect(tmpSSID, tmpUNAME, tmpPASS, tmpAUTH);
-      else wifiConnect = bmWiFi.attemptConnect(tmpSSID, tmpPASS, tmpAUTH);
+      if (WiFi::isEnterpriseMode(tmpAUTH))
+        wifiConnect = WiFi::attemptConnect(tmpSSID, tmpUNAME, tmpPASS, tmpAUTH);
+      else wifiConnect = WiFi::attemptConnect(tmpSSID, tmpPASS, tmpAUTH);
       
       if (!wifiConnect) {
         notifyConnectionStatus(false);
@@ -76,12 +76,12 @@ void bleSetupTask(void* arg) {
       if (err == ESP_OK) {
         esp_err_t saveErr = ESP_OK;
         saveErr |= nvs_set_str(WiFiHandle, ssidTag, tmpSSID.c_str());
-        saveErr |= nvs_set_str(WiFiHandle, passTag, tmpPASS.c_str());
         saveErr |= nvs_set_u8(WiFiHandle, authTag, (uint8_t)tmpAUTH);
         
-        if (tmpUNAME.length() > 0) {
+        if (tmpUNAME.length() > 0)
           saveErr |= nvs_set_str(WiFiHandle, unameTag, tmpUNAME.c_str());
-        }
+        if (tmpPASS.length() > 0)
+          saveErr |= nvs_set_str(WiFiHandle, passTag, tmpPASS.c_str());
         
         if (saveErr == ESP_OK) {
           nvs_commit(WiFiHandle);
@@ -170,7 +170,7 @@ void setupLoop() {
         char pw[pwSize];
         nvs_get_str(WiFiHandle, passTag, pw, &pwSize);
         nvs_close(WiFiHandle);
-        if (!bmWiFi.attemptConnect(ssid, pw, (wifi_auth_mode_t)authMode)) {
+        if (!WiFi::attemptConnect(ssid, pw, (wifi_auth_mode_t)authMode)) {
           // Make RGB LED certain color (Blue?)
           printf("Found credentials, failed to connect.\n");
           initialSetup();
