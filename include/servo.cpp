@@ -115,9 +115,11 @@ void initMainLoop() {
 }
 
 void IRAM_ATTR watchdogCallback(void* arg) {
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  
   if (runningManual || runningServer) {
     // if we're trying to move and our timer ran out, we need to recalibrate
-    clearCalibFlag = true;
+    xEventGroupSetBitsFromISR(g_system_events, EVENT_CLEAR_CALIB, &xHigherPriorityTaskWoken);
     topEnc->pauseWatchdog();
 
     // get ready for recalibration by clearing all these listeners
@@ -129,11 +131,13 @@ void IRAM_ATTR watchdogCallback(void* arg) {
   else {
     // if no movement is running, we're fine
     // save current servo-encoder position for reinitialization
-    savePosFlag = true;
+    xEventGroupSetBitsFromISR(g_system_events, EVENT_SAVE_POSITION, &xHigherPriorityTaskWoken);
   }
   // clear running flags
   runningManual = false;
   runningServer = false;
+  
+  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 void servoSavePos() {
@@ -240,4 +244,69 @@ void runToAppPos(uint8_t appPos) {
   if (startLess) servoOn(CCW, server); // begin servo movement
   else servoOn(CW, server);
   topEnc->serverListen = true; // start listening for shutoff point
+}
+
+// Servo control task - processes encoder events and servo commands
+void servoControlTask(void* arg) {
+    encoder_event_t enc_event;
+    servo_cmd_msg_t cmd;
+    
+    printf("Servo control task started\n");
+    
+    while (1) {
+        // Block waiting for encoder events (higher priority)
+        if (xQueueReceive(g_encoder_event_queue, &enc_event, pdMS_TO_TICKS(10)) == pdTRUE) {
+            // Process encoder event (work that was done in ISR before)
+            
+            // Handle calibration listening
+            if (calibListen) {
+                int32_t effDiff = (bottomEnc->getCount() - topEnc->getCount()) - baseDiff;
+                if (effDiff > 1) {
+                    servoOn(CCW, manual);
+                }
+                else if (effDiff < -1) {
+                    servoOn(CW, manual);
+                }
+                else {
+                    servoOff();
+                }
+            }
+            
+            // Only process top encoder events for watchdog and listeners
+            if (enc_event.is_top_encoder) {
+                // Feed watchdog in task context (not ISR)
+                if (topEnc->feedWDog) {
+                    esp_timer_restart(topEnc->watchdog_handle, 500000);
+                }
+                
+                // Check wand listener - now safe in task context
+                if (topEnc->wandListen) {
+                    servoWandListen();
+                }
+                
+                // Check server listener - now safe in task context
+                if (topEnc->serverListen) {
+                    servoServerListen();
+                }
+            }
+        }
+        
+        // Check for direct servo commands (lower priority)
+        if (xQueueReceive(g_servo_command_queue, &cmd, 0) == pdTRUE) {
+            switch (cmd.command) {
+                case SERVO_CMD_STOP:
+                    servoOff();
+                    break;
+                case SERVO_CMD_MOVE_CCW:
+                    servoOn(CCW, cmd.is_manual ? manual : server);
+                    break;
+                case SERVO_CMD_MOVE_CW:
+                    servoOn(CW, cmd.is_manual ? manual : server);
+                    break;
+                case SERVO_CMD_MOVE_TO_POSITION:
+                    runToAppPos(cmd.target_position);
+                    break;
+            }
+        }
+    }
 }
