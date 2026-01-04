@@ -13,10 +13,10 @@ std::atomic<bool> finalAuth{false};
 std::mutex dataMutex;
 
 wifi_auth_mode_t auth;
-static std::string SSID = "";
-static std::string TOKEN = "";
-static std::string PASS = "";
-static std::string UNAME = "";
+std::string SSID = "";
+std::string TOKEN = "";
+std::string PASS = "";
+std::string UNAME = "";
 
 // Global pointers to characteristics for notification support
 std::atomic<NimBLECharacteristic*> ssidListChar = nullptr;
