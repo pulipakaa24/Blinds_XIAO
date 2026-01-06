@@ -7,6 +7,8 @@
 #include "calibration.hpp"
 #include "servo.hpp"
 #include "defines.h"
+#include <vector>
+#include <string>
 
 static esp_socketio_client_handle_t io_client;
 static esp_socketio_packet_handle_t tx_packet = NULL;
@@ -56,15 +58,43 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
               cJSON *data = cJSON_GetArrayItem(json, 1);
               
               if (data) {
+                cJSON *code = cJSON_GetObjectItem(data, "code");
                 cJSON *message = cJSON_GetObjectItem(data, "message");
-                if (message && cJSON_IsString(message)) {
-                  printf("Server error: %s\n", message->valuestring);
+                
+                // Check if this is a rate limiting error (429)
+                if (code && cJSON_IsNumber(code) && code->valueint == 429) {
+                  printf("Rate limited by server: %s\n", 
+                         message && cJSON_IsString(message) ? message->valuestring : "Too many messages");
+                  
+                  // Queue the last sent message for retry after 1 second
+                  if (xSemaphoreTake(retryQueueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                    if (lastMessageDataCopy && !lastEventName.empty()) {
+                      int64_t retryTime = (esp_timer_get_time() / 1000) + 1000; // 1 second from now
+                      RetryMessage retry;
+                      retry.eventName = lastEventName;
+                      retry.data = lastMessageDataCopy;
+                      retry.retryAfter = retryTime;
+                      retryQueue.push_back(retry);
+                      printf("Queued '%s' for retry in 1 second\n", lastEventName.c_str());
+                      lastMessageDataCopy = NULL; // Transfer ownership to retry queue
+                    }
+                    xSemaphoreGive(retryQueueMutex);
+                  }
+                  // Don't disconnect for rate limiting errors
+                } else {
+                  // Other errors - handle normally
+                  if (message && cJSON_IsString(message)) {
+                    printf("Server error: %s\n", message->valuestring);
+                  }
+                  // Mark connection as failed for non-rate-limit errors
+                  connected = false;
+                  xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_DISCONNECTED);
                 }
+              } else {
+                // No data in error - disconnect
+                connected = false;
+                xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_DISCONNECTED);
               }
-              
-              // Mark connection as failed
-              connected = false;
-              xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_DISCONNECTED);
             }
             // Handle device_init event
             else if (strcmp(eventName->valuestring, "device_init") == 0) {
@@ -263,6 +293,19 @@ void initSocketIO() {
   
   io_client = esp_socketio_client_init(&config);
   tx_packet = esp_socketio_client_get_tx_packet(io_client);
+    
+    // Clean up retry queue
+    if (xSemaphoreTake(retryQueueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      for (auto& msg : retryQueue) {
+        cJSON_Delete(msg.data);
+      }
+      retryQueue.clear();
+      if (lastMessageDataCopy) {
+        cJSON_Delete(lastMessageDataCopy);
+        lastMessageDataCopy = NULL;
+      }
+      xSemaphoreGive(retryQueueMutex);
+    }
   
   esp_socketio_register_events(io_client, SOCKETIO_EVENT_ANY, socketio_event_handler, NULL);
   esp_socketio_client_start(io_client);
@@ -298,25 +341,68 @@ static void emitSocketEvent(const char* eventName, cJSON* data) {
   }
 }
 
+// Retry queue for rate-limited messages
+struct RetryMessage {
+  std::string eventName;
+  cJSON* data;
+  int64_t retryAfter;  // Timestamp in milliseconds
+};
+static std::vector<RetryMessage> retryQueue;
+static SemaphoreHandle_t retryQueueMutex = xSemaphoreCreateMutex();
+
+// Track last sent message for potential retry
+static std::string lastEventName;
+static cJSON* lastMessageDataCopy = NULL;
+
+// Rate-limited emit function that handles retries properly
+static void emitSocketEventWithRetry(const char* eventName, cJSON* data) {
+  // Take mutex to protect retry queue
+  if (xSemaphoreTake(retryQueueMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    // First, check and send any messages from retry queue that are ready
+    int64_t now = esp_timer_get_time() / 1000; // Convert to milliseconds
+    for (auto it = retryQueue.begin(); it != retryQueue.end(); ) {
+      if (now >= it->retryAfter) {
+        printf("Retrying rate-limited message: %s\n", it->eventName.c_str());
+        emitSocketEvent(it->eventName.c_str(), it->data);
+        it = retryQueue.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    
+    // Store a copy of this message in case it gets rate-limited
+    if (lastMessageDataCopy) {
+      cJSON_Delete(lastMessageDataCopy);
+    }
+    lastEventName = eventName;
+    lastMessageDataCopy = cJSON_Duplicate(data, true);
+    
+    xSemaphoreGive(retryQueueMutex);
+  }
+  
+  // Send the current message
+  emitSocketEvent(eventName, data);
+}
+
 // Function to emit 'calib_done' as expected by your server
 void emitCalibDone(int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
-  emitSocketEvent("calib_done", data);
+  emitSocketEventWithRetry("calib_done", data);
 }
 
 // Function to emit 'calib_stage1_ready' to notify server device is ready for tilt up
 void emitCalibStage1Ready(int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
-  emitSocketEvent("calib_stage1_ready", data);
+  emitSocketEventWithRetry("calib_stage1_ready", data);
 }
 
 // Function to emit 'calib_stage2_ready' to notify server device is ready for tilt down
 void emitCalibStage2Ready(int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
-  emitSocketEvent("calib_stage2_ready", data);
+  emitSocketEventWithRetry("calib_stage2_ready", data);
 }
 
 // Function to emit 'report_calib_status' to tell server device's actual calibration state
@@ -324,7 +410,7 @@ void emitCalibStatus(bool calibrated, int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
   cJSON_AddBoolToObject(data, "calibrated", calibrated);
-  emitSocketEvent("report_calib_status", data);
+  emitSocketEventWithRetry("report_calib_status", data);
 }
 
 // Function to emit 'device_calib_error' to notify server of calibration failure
@@ -332,7 +418,7 @@ void emitCalibError(const char* errorMessage, int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
   cJSON_AddStringToObject(data, "message", errorMessage);
-  emitSocketEvent("device_calib_error", data);
+  emitSocketEventWithRetry("device_calib_error", data);
 }
 
 // Function to emit 'pos_hit' to notify server of position change
@@ -340,5 +426,5 @@ void emitPosHit(int pos, int port) {
   cJSON *data = cJSON_CreateObject();
   cJSON_AddNumberToObject(data, "port", port);
   cJSON_AddNumberToObject(data, "pos", pos);
-  emitSocketEvent("pos_hit", data);
+  emitSocketEventWithRetry("pos_hit", data);
 }
