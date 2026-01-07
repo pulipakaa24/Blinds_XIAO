@@ -9,7 +9,8 @@ static const char *TAG = "ENCODER";
 // Constructor
 Encoder::Encoder(gpio_num_t pinA, gpio_num_t pinB) 
     : pin_a(pinA), pin_b(pinB), count(0), 
-      last_state_a(0), last_state_b(0), last_count_base(0) {}
+      last_state_a(0), last_state_b(0), last_count_base(0),
+      watchdog_handle(nullptr) {}
 
 // Static ISR - receives Encoder instance via arg
 void IRAM_ATTR Encoder::isr_handler(void* arg)
@@ -48,7 +49,11 @@ void IRAM_ATTR Encoder::isr_handler(void* arg)
     encoder->count += 1;
     encoder->last_count_base -= 4;
     if (calibListen) servoCalibListen();
-    if (encoder->feedWDog) esp_timer_restart(encoder->watchdog_handle, 500000);
+    if (encoder->feedWDog) {
+      esp_timer_stop(encoder->watchdog_handle);
+      esp_timer_start_once(encoder->watchdog_handle, 500000);
+      debugLEDTgl();
+    }
     if (encoder->wandListen) servoWandListen();
     if (encoder->serverListen) servoServerListen();
   }
@@ -56,7 +61,11 @@ void IRAM_ATTR Encoder::isr_handler(void* arg)
     encoder->count -= 1;
     encoder->last_count_base += 4;
     if (calibListen) servoCalibListen();
-    if (encoder->feedWDog) esp_timer_restart(encoder->watchdog_handle, 500000);
+    if (encoder->feedWDog) {
+      esp_timer_stop(encoder->watchdog_handle);
+      esp_timer_start_once(encoder->watchdog_handle, 500000);
+      debugLEDTgl();
+    }
     if (encoder->wandListen) servoWandListen();
     if (encoder->serverListen) servoServerListen();
   }
@@ -107,9 +116,9 @@ void Encoder::setupWatchdog() {
   feedWDog = true;
 }
 
-void Encoder::pauseWatchdog() {
+void IRAM_ATTR Encoder::pauseWatchdog() {
+  if (watchdog_handle != nullptr) esp_timer_stop(watchdog_handle);
   feedWDog = false;
-  if (watchdog_handle != NULL) esp_timer_stop(watchdog_handle);
 }
 
 Encoder::~Encoder() {

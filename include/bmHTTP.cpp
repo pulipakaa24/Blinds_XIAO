@@ -2,16 +2,39 @@
 #include "esp_http_client.h"
 #include "nvs_flash.h"
 #include "defines.h"
-#define httpSrv "http://192.168.1.190:3000/"
+#include "esp_crt_bundle.h"
 
 std::string webToken;
+const std::string urlBase = std::string("http") + (secureSrv ? "s" : "") + "://" + srvAddr + "/";
+
+esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
+    switch(evt->event_id) {
+        case HTTP_EVENT_ON_DATA: {
+            // Append received data to buffer (handles both chunked and non-chunked)
+            if (evt->data_len > 0 && evt->user_data != NULL) {
+              std::string* rxBuffer = (std::string*)evt->user_data;
+              rxBuffer->append((char*)evt->data, evt->data_len);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    return ESP_OK;
+}
 
 bool httpGET(std::string endpoint, std::string token, cJSON* &JSONresponse) {
-  std::string url = std::string(httpSrv) + endpoint;
+  std::string url = urlBase + endpoint;
+  std::string responseBuffer = "";
   
   esp_http_client_config_t config = {};
   config.url = url.c_str();
-  config.method = HTTP_METHOD_GET;
+  config.event_handler = _http_event_handler; // Attach the bucket
+  config.user_data = &responseBuffer;         // Pass pointer to our string so the handler can write to it
+  if (secureSrv) {
+    config.transport_type = HTTP_TRANSPORT_OVER_SSL;
+    config.crt_bundle_attach = esp_crt_bundle_attach;
+  }
   
   esp_http_client_handle_t client = esp_http_client_init(&config);
   
@@ -20,50 +43,24 @@ bool httpGET(std::string endpoint, std::string token, cJSON* &JSONresponse) {
   esp_http_client_set_header(client, "Authorization", authHeader.c_str());
   
   // Open connection and fetch headers
-  esp_err_t err = esp_http_client_open(client, 0);
+  esp_err_t err = esp_http_client_perform(client);
   bool success = false;
 
   if (err == ESP_OK) {
-    int content_length = esp_http_client_fetch_headers(client);
-    int status_code = esp_http_client_get_status_code(client);
-    
-    printf("HTTP Status = %d, content_length = %d\n", status_code, content_length);
-    
-    if (status_code == 200 && content_length > 0) {
-      // Allocate buffer for the response
-      char *buffer = (char *)malloc(content_length + 1);
-      if (buffer) {
-        int total_read = 0;
-        int read_len;
+        int status_code = esp_http_client_get_status_code(client);
+        printf("Status = %d, Content Length = %d\n", status_code, esp_http_client_get_content_length(client));
         
-        // Read the response body
-        while (total_read < content_length) {
-          read_len = esp_http_client_read(client, buffer + total_read, content_length - total_read);
-          if (read_len <= 0) break;
-          total_read += read_len;
+        if (status_code == 200) {
+            printf("Response: %s\n", responseBuffer.c_str());
+            JSONresponse = cJSON_Parse(responseBuffer.c_str());
+            if (JSONresponse) success = true;
         }
-        
-        buffer[total_read] = '\0';
-        printf("Response body: %s\n", buffer);
-        
-        JSONresponse = cJSON_Parse(buffer);
-        success = (JSONresponse != NULL);
-        
-        if (!success) {
-          printf("Failed to parse JSON\n");
-        }
-        
-        free(buffer);
-      } else {
-        printf("Failed to allocate buffer for response\n");
-      }
+    } else {
+        printf("HTTP GET failed: %s\n", esp_err_to_name(err));
     }
-    
-    esp_http_client_close(client);
-  } else printf("HTTP request failed: %s\n", esp_err_to_name(err));
-  
-  esp_http_client_cleanup(client);
-  return success;
+
+    esp_http_client_cleanup(client);
+    return success;
 }
 
 void deleteWiFiAndTokenDetails() {

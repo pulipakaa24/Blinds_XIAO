@@ -6,6 +6,8 @@
 #include "cJSON.h"
 #include "calibration.hpp"
 #include "servo.hpp"
+#include "defines.h"
+#include "esp_crt_bundle.h"
 
 static esp_socketio_client_handle_t io_client;
 static esp_socketio_packet_handle_t tx_packet = NULL;
@@ -139,8 +141,15 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                     emitCalibError("Non-1 Port");
                   }
                   else {
-                    if (!servoInitCalib()) emitCalibError("Initialization failed");
-                    else emitCalibStage1Ready();
+                    printf("Running initCalib...\n");
+                    if (!servoInitCalib()) {
+                      printf("initCalib returned False\n");
+                      emitCalibError("Initialization failed");
+                    }
+                    else {
+                      printf("Ready to calibrate\n");
+                      emitCalibStage1Ready();
+                    }
                   }
                 }
               }
@@ -157,11 +166,11 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                     printf("Error, non-1 port received for calibration\n");
                     emitCalibError("Non-1 Port");
                   }
-                   else {
+                  else {
                     if (!servoBeginDownwardCalib())
                       emitCalibError("Direction Switch Failed");
                     else emitCalibStage2Ready();
-                   }
+                  }
                 }
               }
             }
@@ -180,6 +189,24 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                   else {
                     if (!servoCompleteCalib()) emitCalibError("Completion failed");
                     else emitCalibDone();
+                  }
+                }
+              }
+            }
+
+            // Handle user_stage1_complete event
+            else if (strcmp(eventName->valuestring, "cancel_calib") == 0) {
+              printf("Canceling calibration process...\n");
+              cJSON *data = cJSON_GetArrayItem(json, 1);
+              if (data) {
+                cJSON *port = cJSON_GetObjectItem(data, "port");
+                if (port && cJSON_IsNumber(port)) {
+                  if (port->valueint != 1) {
+                    printf("Error, non-1 port received for calibration\n");
+                    emitCalibError("Non-1 Port");
+                  }
+                  else {
+                    servoCancelCalib();
                   }
                 }
               }
@@ -225,18 +252,47 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
         
     case SOCKETIO_EVENT_ERROR: {
       printf("Socket.IO Error!\n");
-      
-      // Check WebSocket error details
+      servoCancelCalib();
       esp_websocket_event_data_t *ws_event = data->websocket_event;
-      if (ws_event && ws_event->error_handle.esp_ws_handshake_status_code != 0) {
-        printf("HTTP Status: %d\n", ws_event->error_handle.esp_ws_handshake_status_code);
-        if (ws_event->error_handle.esp_ws_handshake_status_code == 401 || 
-          ws_event->error_handle.esp_ws_handshake_status_code == 403) {
-          printf("Authentication failed - invalid token\n");
-        }
+      
+      if (ws_event) {
+          // 1. Check for TLS/SSL specific errors (Certificate issues)
+          if (ws_event->error_handle.error_type == WEBSOCKET_ERROR_TYPE_TCP_TRANSPORT) {
+              
+              // This prints the "MbedTLS" error code (The low-level crypto library)
+              // Common codes: -0x2700 (CRT verify failed), -0x7200 (SSL handshake failed)
+              if (ws_event->error_handle.esp_tls_stack_err != 0) {
+                  printf("TLS/SSL Stack Error: -0x%x\n", -ws_event->error_handle.esp_tls_stack_err);
+              }
+
+              // 2. Check the Certificate Verification Flags
+              // If this is non-zero, the certificate was rejected.
+              if (ws_event->error_handle.esp_tls_cert_verify_flags != 0) {
+                  uint32_t flags = ws_event->error_handle.esp_tls_cert_verify_flags;
+                  printf("Certificate Verification FAILED. Flags: 0x%lx\n", flags);
+                  
+                  // Simple decoder for common flags:
+                  if (flags & (1 << 0)) printf(" - CRT_NOT_TRUSTED (Root CA not found in bundle)\n");
+                  if (flags & (1 << 1)) printf(" - CRT_BAD_KEY_USAGE\n");
+                  if (flags & (1 << 2)) printf(" - CRT_EXPIRED (Check your ESP32 system time!)\n");
+                  if (flags & (1 << 3)) printf(" - CRT_CN_MISMATCH (Domain name doesn't match cert)\n");
+              }
+          }
+          
+          // 3. Check for HTTP Handshake errors (401/403/404)
+          // This happens if SSL worked, but the server rejected your path or token
+          else if (ws_event->error_handle.error_type == WEBSOCKET_ERROR_TYPE_HANDSHAKE) {
+              int status = ws_event->error_handle.esp_ws_handshake_status_code;
+              printf("HTTP Handshake Error: %d\n", status);
+              
+              if (status == 401 || status == 403) {
+                  printf("Authentication failed - invalid token\n");
+              } else if (status == 404) {
+                  printf("404 Not Found - Check your URI/Path\n");
+              }
+          }
       }
       
-      // Set flags to indicate connection failure
       connected = false;
       statusResolved = true;
       break;
@@ -251,6 +307,7 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
   }
 }
 
+const std::string uriString = std::string("ws") + (secureSrv ? "s" : "") + "://" + srvAddr + "/socket.io/?EIO=4&transport=websocket";
 void initSocketIO() {
   // Prepare the Authorization Header (Bearer format)
   std::string authHeader = "Authorization: Bearer " + webToken + "\r\n";
@@ -259,8 +316,13 @@ void initSocketIO() {
   connected = false;
   
   esp_socketio_client_config_t config = {};
-  config.websocket_config.uri = "ws://192.168.1.190:3000/socket.io/?EIO=4&transport=websocket";
+  config.websocket_config.uri = uriString.c_str();
   config.websocket_config.headers = authHeader.c_str();
+
+  if (secureSrv) {
+      config.websocket_config.transport = WEBSOCKET_TRANSPORT_OVER_SSL;
+      config.websocket_config.crt_bundle_attach = esp_crt_bundle_attach;
+  }
   
   io_client = esp_socketio_client_init(&config);
   tx_packet = esp_socketio_client_get_tx_packet(io_client);
