@@ -292,23 +292,16 @@ void servoControlTask(void* arg) {
             
             // Handle calibration listening
             if (calibListen) {
-                int32_t effDiff = (bottomEnc->getCount() - topEnc->getCount()) - baseDiff;
-                if (effDiff > 1) {
-                    servoOn(CCW, manual);
-                }
-                else if (effDiff < -1) {
-                    servoOn(CW, manual);
-                }
-                else {
-                    servoOff();
-                }
+              servoCalibListen();
             }
             
             // Only process top encoder events for watchdog and listeners
             if (enc_event.is_top_encoder) {
                 // Feed watchdog in task context (not ISR)
                 if (topEnc->feedWDog) {
-                    esp_timer_restart(topEnc->watchdog_handle, 500000);
+                  esp_timer_stop(topEnc->watchdog_handle);
+                  esp_timer_start_once(topEnc->watchdog_handle, 500000);
+                  debugLEDTgl();
                 }
                 
                 // Check wand listener - now safe in task context
@@ -318,6 +311,26 @@ void servoControlTask(void* arg) {
                 
                 // Check server listener - now safe in task context
                 if (topEnc->serverListen) {
+                    servoServerListen();
+                }
+            }
+
+            // Only process top encoder events for watchdog and listeners
+            else {
+                // Feed watchdog in task context (not ISR)
+                if (bottomEnc->feedWDog) {
+                  esp_timer_stop(bottomEnc->watchdog_handle);
+                  esp_timer_start_once(bottomEnc->watchdog_handle, 500000);
+                  debugLEDTgl();
+                }
+                
+                // Check wand listener - now safe in task context
+                if (bottomEnc->wandListen) {
+                    servoWandListen();
+                }
+                
+                // Check server listener - now safe in task context
+                if (bottomEnc->serverListen) {
                     servoServerListen();
                 }
             }
