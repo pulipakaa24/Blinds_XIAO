@@ -4,6 +4,12 @@
 #include <atomic>
 #include "esp_timer.h"
 
+// Encoder event structure for queue
+typedef struct {
+    int32_t count;
+    bool is_top_encoder;
+} encoder_event_t;
+
 class Encoder {
 public:
   // Shared between ISR and main code

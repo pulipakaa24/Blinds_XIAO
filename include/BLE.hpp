@@ -23,6 +23,6 @@ class MyCharCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 NimBLEAdvertising* initBLE();
-bool BLEtick(NimBLEAdvertising* pAdvertising);
+// BLEtick removed - now using event-driven bleSetupTask
 
 #endif

@@ -12,7 +12,6 @@
 static esp_socketio_client_handle_t io_client;
 static esp_socketio_packet_handle_t tx_packet = NULL;
 
-std::atomic<bool> statusResolved{true};
 std::atomic<bool> connected{false};
 
 // Event handler for Socket.IO events
@@ -66,7 +65,7 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
               
               // Mark connection as failed
               connected = false;
-              statusResolved = true;
+              xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_DISCONNECTED);
             }
             // Handle device_init event
             else if (strcmp(eventName->valuestring, "device_init") == 0) {
@@ -93,7 +92,7 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                       if (port != 1) printf("ERROR: NON-1 PORT RECEIVED\n");
                       // Report back actual calibration status from device
                       else {
-                        bool deviceCalibrated = calib.getCalibrated();
+                        bool deviceCalibrated = Calibration::getCalibrated();
                         emitCalibStatus(deviceCalibrated);
                         printf("  Reported calibrated=%d for port %d\n", deviceCalibrated, port);
                         runToAppPos(lastPos);
@@ -103,13 +102,13 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                   
                   // Now mark as connected
                   connected = true;
-                  statusResolved = true;
+                  xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_CONNECTED);
                 } else {
                   printf("Device authentication failed\n");
-                  calib.clearCalibrated();
+                  Calibration::clearCalibrated();
                   deleteWiFiAndTokenDetails();
                   connected = false;
-                  statusResolved = true;
+                  xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_DISCONNECTED);
                 }
               }
             }
@@ -123,10 +122,10 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                   printf("Server message: %s\n", message->valuestring);
                 }
               }
-              calib.clearCalibrated();
+              Calibration::clearCalibrated();
               deleteWiFiAndTokenDetails();
               connected = false;
-              statusResolved = true;
+              xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_DISCONNECTED);
             }
 
             // Handle calib_start event
@@ -293,8 +292,9 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
           }
       }
       
+      // Signal disconnection via event group
       connected = false;
-      statusResolved = true;
+      xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_DISCONNECTED);
       break;
     }
   }
@@ -303,7 +303,7 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
   if (data->websocket_event_id == WEBSOCKET_EVENT_DISCONNECTED) {
     printf("WebSocket disconnected\n");
     connected = false;
-    statusResolved = true;
+    xEventGroupSetBits(g_system_events, EVENT_SOCKETIO_DISCONNECTED);
   }
 }
 
@@ -312,7 +312,6 @@ void initSocketIO() {
   // Prepare the Authorization Header (Bearer format)
   std::string authHeader = "Authorization: Bearer " + webToken + "\r\n";
 
-  statusResolved = false;
   connected = false;
   
   esp_socketio_client_config_t config = {};
@@ -339,7 +338,6 @@ void stopSocketIO() {
     io_client = NULL;
     tx_packet = NULL;
     connected = false;
-    statusResolved = false;
   }
 }
 

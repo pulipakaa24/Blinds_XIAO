@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "soc/gpio_struct.h"
 #include "servo.hpp"
+#include "defines.h"
 
 static const char *TAG = "ENCODER";
 
@@ -48,26 +49,32 @@ void IRAM_ATTR Encoder::isr_handler(void* arg)
   if (encoder->last_count_base > 3) {
     encoder->count += 1;
     encoder->last_count_base -= 4;
-    if (calibListen) servoCalibListen();
-    if (encoder->feedWDog) {
-      esp_timer_stop(encoder->watchdog_handle);
-      esp_timer_start_once(encoder->watchdog_handle, 500000);
-      debugLEDTgl();
+    
+    // DEFER to task via queue instead of direct function calls
+    encoder_event_t event = {
+        .count = encoder->count.load(),
+        .is_top_encoder = (encoder == topEnc)
+    };
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    if (g_encoder_event_queue != NULL) {
+      xQueueSendFromISR(g_encoder_event_queue, &event, &xHigherPriorityTaskWoken);
+      portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
-    if (encoder->wandListen) servoWandListen();
-    if (encoder->serverListen) servoServerListen();
   }
   else if (encoder->last_count_base < 0) {
     encoder->count -= 1;
     encoder->last_count_base += 4;
-    if (calibListen) servoCalibListen();
-    if (encoder->feedWDog) {
-      esp_timer_stop(encoder->watchdog_handle);
-      esp_timer_start_once(encoder->watchdog_handle, 500000);
-      debugLEDTgl();
+    
+    // DEFER to task via queue instead of direct function calls
+    encoder_event_t event = {
+        .count = encoder->count.load(),
+        .is_top_encoder = (encoder == topEnc)
+    };
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    if (g_encoder_event_queue != NULL) {
+      xQueueSendFromISR(g_encoder_event_queue, &event, &xHigherPriorityTaskWoken);
+      portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     }
-    if (encoder->wandListen) servoWandListen();
-    if (encoder->serverListen) servoServerListen();
   }
   
   encoder->last_state_a = current_a;

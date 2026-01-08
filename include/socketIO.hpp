@@ -2,7 +2,6 @@
 #define SOCKETIO_HPP
 #include <atomic>
 
-extern std::atomic<bool> statusResolved;
 extern std::atomic<bool> connected;
 
 // Initialize Socket.IO client and connect to server

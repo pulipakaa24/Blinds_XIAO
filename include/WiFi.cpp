@@ -12,8 +12,6 @@ esp_event_handler_instance_t WiFi::instance_got_ip = NULL;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_STARTED_BIT BIT1
 
-WiFi bmWiFi;
-
 // The Event Handler (The engine room)
 void WiFi::event_handler(void* arg, esp_event_base_t event_base,
                           int32_t event_id, void* event_data) {
@@ -117,6 +115,16 @@ bool WiFi::isConnected() {
   if (s_wifi_event_group == NULL) return false;
   EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
   return (bits & WIFI_CONNECTED_BIT);
+}
+
+// Helper to check if auth mode requires enterprise credentials
+bool WiFi::isEnterpriseMode(wifi_auth_mode_t authMode) {
+  return (authMode == WIFI_AUTH_WPA2_ENTERPRISE ||
+          authMode == WIFI_AUTH_WPA3_ENTERPRISE ||
+          authMode == WIFI_AUTH_WPA2_WPA3_ENTERPRISE ||
+          authMode == WIFI_AUTH_WPA_ENTERPRISE ||
+          authMode == WIFI_AUTH_WPA3_ENT_192 ||
+          authMode == WIFI_AUTH_ENTERPRISE);  // Deprecated alias for WPA2
 }
 
 // --- GET IP AS STRING ---
