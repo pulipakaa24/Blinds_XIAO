@@ -39,6 +39,9 @@ void servoCalibListen();
 bool servoInitCalib();
 bool servoBeginDownwardCalib();
 bool servoCompleteCalib();
+void servoCancelCalib();
+void debugLEDSwitch(uint8_t onOff);
+void debugLEDTgl();
 
 void initMainLoop();
 void watchdogCallback(void* arg);

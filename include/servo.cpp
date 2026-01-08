@@ -41,8 +41,14 @@ void servoInit() {
   gpio_set_direction(servoSwitch, GPIO_MODE_OUTPUT);
   gpio_set_level(servoSwitch, 0); // Start with servo power off
 
+  // Configure debug LED pin as output
+  gpio_reset_pin(GPIO_NUM_22);
+  gpio_set_direction(debugLED, GPIO_MODE_OUTPUT);
+  gpio_set_level(debugLED, 0); // Start with LED off
+
   topEnc->count = servoReadPos();
   if (Calibration::getCalibrated()) initMainLoop();
+  debugLEDSwitch(1);
 }
 
 void servoOn(uint8_t dir, uint8_t manOrServer) {
@@ -65,13 +71,22 @@ void servoMainSwitch(uint8_t onOff) {
   gpio_set_level(servoSwitch, onOff ? 1 : 0);
 }
 
+void debugLEDSwitch(uint8_t onOff) {
+  gpio_set_level(debugLED, onOff ? 1 : 0);
+}
+
+void debugLEDTgl() {
+  static bool onOff = false;
+  gpio_set_level(debugLED, onOff);
+  onOff = !onOff;
+}
+
 bool servoInitCalib() {
   topEnc->pauseWatchdog();
-
   // get ready for calibration by clearing all these listeners
-  bottomEnc->wandListen = false;
-  topEnc->wandListen = false;
-  topEnc->serverListen = false;
+  bottomEnc->wandListen.store(false, std::memory_order_release);
+  topEnc->wandListen.store(false, std::memory_order_release);
+  topEnc->serverListen.store(false, std::memory_order_release);
   if (!Calibration::clearCalibrated()) return false;
   if (topEnc == nullptr || bottomEnc == nullptr) {
     printf("ERROR: CALIBRATION STARTED BEFORE SERVO INITIALIZATION\n");
@@ -82,11 +97,20 @@ bool servoInitCalib() {
   return true;
 }
 
+void servoCancelCalib() {
+  calibListen = false;
+  servoOff();
+}
+
 void servoCalibListen() {
   int32_t effDiff = (bottomEnc->getCount() - topEnc->getCount()) - baseDiff;
   if (effDiff > 1) servoOn(CCW, manual);
-  else if (effDiff < -1) servoOn(CW, manual);
-  else servoOff();
+  else if (effDiff < -1) {
+    servoOn(CW, manual);
+  }
+  else {
+    servoOff();
+  }
 }
 
 bool servoBeginDownwardCalib() {
@@ -111,7 +135,7 @@ bool servoCompleteCalib() {
 void initMainLoop() {
   topEnc->setupWatchdog();
   servoSavePos();
-  bottomEnc->wandListen = true;
+  bottomEnc->wandListen.store(true, std::memory_order_release);
 }
 
 void IRAM_ATTR watchdogCallback(void* arg) {
@@ -123,9 +147,9 @@ void IRAM_ATTR watchdogCallback(void* arg) {
     topEnc->pauseWatchdog();
 
     // get ready for recalibration by clearing all these listeners
-    bottomEnc->wandListen = false;
-    topEnc->wandListen = false;
-    topEnc->serverListen = false;
+    bottomEnc->wandListen.store(false, std::memory_order_release);
+    topEnc->wandListen.store(false, std::memory_order_release);
+    topEnc->serverListen.store(false, std::memory_order_release);
     servoOff();
   }
   else {
@@ -174,7 +198,7 @@ int32_t servoReadPos() {
 
 void stopServerRun() {
   // stop listener and stop running if serverRun is still active.
-  topEnc->serverListen = false;
+  topEnc->serverListen.store(false, std::memory_order_release);
   if (runningServer) servoOff();
 }
 
@@ -203,21 +227,27 @@ void servoWandListen() {
   // if effective difference is 0, stop servo and servo-listener
   // otherwise, run servo in whichever direction necessary and
   // ensure servo-listener is active.
-  if (abs(topCount - upBound) <= 1 || abs(topCount - downBound) <= 1) {
+  if (topCount >= (MAX(upBound, downBound) - 1)
+      && effDiff > 1) { // TODO: see whether these margins need to be removed.
     servoOff();
-    topEnc->wandListen = false;
+    topEnc->wandListen.store(false, std::memory_order_release);
+  }
+  else if (topCount <= (MIN(upBound, downBound) + 1)
+      && effDiff < -1) {
+    servoOff();
+    topEnc->wandListen.store(false, std::memory_order_release);
   }
   else if (effDiff > 1) {
-    topEnc->wandListen = true;
+    topEnc->wandListen.store(true, std::memory_order_release);
     servoOn(CCW, manual);
   }
   else if (effDiff < -1) {
-    topEnc->wandListen = true;
+    topEnc->wandListen.store(true, std::memory_order_release);
     servoOn(CW, manual);
   }
   else {
     servoOff();
-    topEnc->wandListen = false;
+    topEnc->wandListen.store(false, std::memory_order_release);
   }
 }
 
@@ -234,16 +264,18 @@ void runToAppPos(uint8_t appPos) {
   if (runningManual || !Calibration::getCalibrated()) return;
   servoOff();
 
+  target = Calibration::convertToTicks(appPos); // calculate target encoder position
+  printf("runToAppPos Called, running to %d from %d", target.load(), topEnc->getCount());
+
   // allow servo position to settle
   vTaskDelay(pdMS_TO_TICKS(500));
   int32_t topCount = topEnc->getCount();
-  target = Calibration::convertToTicks(appPos); // calculate target encoder position
   if (abs(topCount - target) <= 1) return;
   startLess = topCount < target;
   if (runningManual) return; // check again before starting remote control
   if (startLess) servoOn(CCW, server); // begin servo movement
   else servoOn(CW, server);
-  topEnc->serverListen = true; // start listening for shutoff point
+  topEnc->serverListen.store(true, std::memory_order_release); // start listening for shutoff point
 }
 
 // Servo control task - processes encoder events and servo commands
