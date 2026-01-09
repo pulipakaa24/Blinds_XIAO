@@ -2,11 +2,6 @@
 #include "defines.h"
 #include "nvs_flash.h"
 
-// Define static members
-std::atomic<int32_t> Calibration::DownTicks{0};
-std::atomic<int32_t> Calibration::UpTicks{0};
-std::atomic<bool> Calibration::calibrated{false};
-
 void Calibration::init() {
   nvs_handle_t calibHandle;
   if (nvs_open(nvsCalib, NVS_READONLY, &calibHandle) == ESP_OK) {

@@ -7,16 +7,19 @@
 #include <mutex>
 #include "bmHTTP.hpp"
 
+std::atomic<bool> flag_scan_requested{false};
+std::atomic<bool> credsGiven{false};
+std::atomic<bool> tokenGiven{false};
 std::atomic<bool> isBLEClientConnected{false};
 std::atomic<bool> scanBlock{false};
 std::atomic<bool> finalAuth{false};
 std::mutex dataMutex;
 
 wifi_auth_mode_t auth;
-std::string SSID = "";
-std::string TOKEN = "";
-std::string PASS = "";
-std::string UNAME = "";
+static std::string SSID = "";
+static std::string TOKEN = "";
+static std::string PASS = "";
+static std::string UNAME = "";
 
 // Global pointers to characteristics for notification support
 std::atomic<NimBLECharacteristic*> ssidListChar = nullptr;
@@ -118,12 +121,125 @@ void notifyAuthStatus(bool success) {
   tmpConfChar->setValue("");  // Clear value after notify
 }
 
-// BLEtick() removed - replaced by bleSetupTask() in setup.cpp
+bool BLEtick(NimBLEAdvertising* pAdvertising) {
+  printf("BleTick\n");
+  if(flag_scan_requested) {
+    flag_scan_requested = false;
+    if (!scanBlock) {
+      scanBlock = true;
+      printf("Scanning WiFi...\n");
+      bmWiFi.scanAndUpdateSSIDList();
+    }
+    else printf("Duplicate scan request\n");
+  }
+  else if (credsGiven) {
+    std::string tmpSSID;
+    std::string tmpUNAME;
+    std::string tmpPASS;
+    wifi_auth_mode_t tmpAUTH;
+    {
+      std::lock_guard<std::mutex> lock(dataMutex);
+      tmpSSID = SSID;
+      tmpUNAME = UNAME;
+      tmpPASS = PASS;
+      tmpAUTH = auth;
+      credsGiven = false;
+    }
+
+    bool wifiConnect;
+    if (tmpAUTH == WIFI_AUTH_WPA2_ENTERPRISE || tmpAUTH == WIFI_AUTH_WPA3_ENTERPRISE)
+      wifiConnect = bmWiFi.attemptConnect(tmpSSID.c_str(), tmpUNAME.c_str(), tmpPASS.c_str(), tmpAUTH);
+    else wifiConnect = bmWiFi.attemptConnect(tmpSSID.c_str(), tmpPASS.c_str(), tmpAUTH);
+    if (!wifiConnect) {
+      // notify errored
+      notifyConnectionStatus(false);
+      return false;
+    }
+
+    nvs_handle_t WiFiHandle;
+    esp_err_t err = nvs_open(nvsWiFi, NVS_READWRITE, &WiFiHandle);
+    if (err != ESP_OK) {
+      printf("ERROR Saving Credentials\n");
+      // notify errored
+      notifyConnectionStatus(false);
+      return false;
+    }
+    else {
+      err = nvs_set_str(WiFiHandle, ssidTag, tmpSSID.c_str());
+      if (err == ESP_OK) err = nvs_set_str(WiFiHandle, passTag, tmpPASS.c_str());
+      if (err == ESP_OK) err = nvs_set_str(WiFiHandle, unameTag, tmpUNAME.c_str());
+      if (err == ESP_OK) err = nvs_set_u8(WiFiHandle, authTag, (uint8_t)tmpAUTH);
+      if (err == ESP_OK) nvs_commit(WiFiHandle);
+      nvs_close(WiFiHandle);
+    }
+    if (err == ESP_OK) {
+      // notify connected
+      notifyConnectionStatus(true);
+    }
+    else {
+      // notify connected
+      notifyConnectionStatus(false);
+    }
+  }
+  else if (tokenGiven) {
+    tokenGiven = false;
+    if (!bmWiFi.isConnected()) {
+      printf("ERROR: token given without WiFi connection\n");
+      notifyAuthStatus(false);
+      return false;
+    }
+    
+    // HTTP request to verify device with token
+    std::string tmpTOKEN;
+    {
+      std::lock_guard<std::mutex> lock(dataMutex);
+      tmpTOKEN = TOKEN;
+    }
+    
+    cJSON *responseRoot;
+    bool success = httpGET("verify_device", tmpTOKEN, responseRoot);
+    if (!success) return false;
+    success = false;
+
+    if (responseRoot != NULL) {
+      cJSON *tokenItem = cJSON_GetObjectItem(responseRoot, "token");
+      if (cJSON_IsString(tokenItem) && tokenItem->valuestring != NULL) {
+        printf("New token received: %s\n", tokenItem->valuestring);
+
+        // Save token to NVS
+        nvs_handle_t AuthHandle;
+        esp_err_t nvs_err = nvs_open(nvsAuth, NVS_READWRITE, &AuthHandle);
+        if (nvs_err == ESP_OK) {
+          nvs_err = nvs_set_str(AuthHandle, tokenTag, tokenItem->valuestring);
+          if (nvs_err == ESP_OK) {
+            nvs_commit(AuthHandle);
+            success = true;
+            webToken = tokenItem->valuestring;
+          }
+          else printf("ERROR: could not save webToken to NVS\n");
+          nvs_close(AuthHandle);
+        }
+        else printf("ERROR: Couldn't open NVS for auth token\n");
+      }
+      cJSON_Delete(responseRoot);
+    } 
+    else printf("Failed to parse JSON response\n");
+
+    finalAuth = true;
+    notifyAuthStatus(success);
+    if (success) NimBLEDevice::deinit(true); // deinitialize BLE
+    return success;
+  }
+  return false;
+}
 
 void reset() {
   esp_wifi_scan_stop();
   if (!finalAuth) esp_wifi_disconnect();
   scanBlock = false;
+  flag_scan_requested = false;
+  credsGiven = false;
+  tokenGiven = false;
 }
 
 void MyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
@@ -179,6 +295,7 @@ void MyCharCallbacks::onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connI
           else error = true;
           if (error) {
             printf("ERROR: Invalid Auth mode passed in with JSON.\n");
+            credsGiven = false;
             cJSON_Delete(root);
             return;
           }
@@ -197,13 +314,13 @@ void MyCharCallbacks::onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connI
             SSID = ssid->valuestring;
             PASS = passPresent ? password->valuestring : "";
             UNAME = unamePresent ? uname->valuestring : "";
-            // Signal via event group instead of flag
-            xEventGroupSetBits(g_system_events, EVENT_BLE_CREDS_RECEIVED);
+            credsGiven = tempCredsGiven; // update the global flag.
           }
           else printf("ERROR: Did not receive necessary credentials.\n");
           cJSON_Delete(root);
         } else {
           printf("Failed to parse JSON\n");
+          credsGiven = false;
         }
       }
     }
@@ -212,16 +329,14 @@ void MyCharCallbacks::onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connI
         printf("Received Token: %s\n", val.c_str());
         std::lock_guard<std::mutex> lock(dataMutex);
         TOKEN = val;
-        // Signal via event group instead of flag
-        xEventGroupSetBits(g_system_events, EVENT_BLE_TOKEN_RECEIVED);
+        tokenGiven = true;
       }
     }
     else if (pChar == currentRefreshChar) {
       if (val == "Start") {
         // Refresh characteristic
         printf("Refresh Requested\n");
-        // Signal via event group instead of flag
-        xEventGroupSetBits(g_system_events, EVENT_BLE_SCAN_REQUEST);
+        flag_scan_requested = true;
       }
       else if (val == "Done") {
         printf("Data read complete\n");

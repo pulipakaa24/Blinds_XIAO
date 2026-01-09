@@ -14,10 +14,6 @@ class WiFi {
     const std::string password, const wifi_auth_mode_t authMode);
   static bool isConnected();
   static void scanAndUpdateSSIDList();
-  
-  // Helper to check if auth mode requires enterprise credentials
-  static bool isEnterpriseMode(wifi_auth_mode_t authMode);
-  
   private:
   static void processScanResults();
   static std::atomic<bool> authFailed;
@@ -30,5 +26,7 @@ class WiFi {
     int32_t event_id, void* event_data);
   static std::string getIP();
 };
+
+extern WiFi bmWiFi;
 
 #endif

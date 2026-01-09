@@ -47,7 +47,7 @@ void servoInit() {
   gpio_set_level(debugLED, 0); // Start with LED off
 
   topEnc->count = servoReadPos();
-  if (Calibration::getCalibrated()) initMainLoop();
+  if (calib.getCalibrated()) initMainLoop();
   debugLEDSwitch(1);
 }
 
@@ -87,7 +87,7 @@ bool servoInitCalib() {
   bottomEnc->wandListen.store(false, std::memory_order_release);
   topEnc->wandListen.store(false, std::memory_order_release);
   topEnc->serverListen.store(false, std::memory_order_release);
-  if (!Calibration::clearCalibrated()) return false;
+  if (!calib.clearCalibrated()) return false;
   if (topEnc == nullptr || bottomEnc == nullptr) {
     printf("ERROR: CALIBRATION STARTED BEFORE SERVO INITIALIZATION\n");
     return false;
@@ -117,7 +117,7 @@ bool servoBeginDownwardCalib() {
   calibListen = false;
   servoOff();
   vTaskDelay(pdMS_TO_TICKS(1000));
-  if (!Calibration::beginDownwardCalib(*topEnc)) return false;
+  if (!calib.beginDownwardCalib(*topEnc)) return false;
   baseDiff = bottomEnc->getCount() - topEnc->getCount();
   calibListen = true;
   return true;
@@ -127,7 +127,7 @@ bool servoCompleteCalib() {
   calibListen = false;
   servoOff();
   vTaskDelay(pdMS_TO_TICKS(1000));
-  if (!Calibration::completeCalib(*topEnc)) return false;
+  if (!calib.completeCalib(*topEnc)) return false;
   initMainLoop();
   return true;
 }
@@ -139,11 +139,9 @@ void initMainLoop() {
 }
 
 void IRAM_ATTR watchdogCallback(void* arg) {
-  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  
   if (runningManual || runningServer) {
     // if we're trying to move and our timer ran out, we need to recalibrate
-    xEventGroupSetBitsFromISR(g_system_events, EVENT_CLEAR_CALIB, &xHigherPriorityTaskWoken);
+    clearCalibFlag = true;
     topEnc->pauseWatchdog();
 
     // get ready for recalibration by clearing all these listeners
@@ -155,13 +153,11 @@ void IRAM_ATTR watchdogCallback(void* arg) {
   else {
     // if no movement is running, we're fine
     // save current servo-encoder position for reinitialization
-    xEventGroupSetBitsFromISR(g_system_events, EVENT_SAVE_POSITION, &xHigherPriorityTaskWoken);
+    savePosFlag = true;
   }
   // clear running flags
   runningManual = false;
   runningServer = false;
-  
-  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 void servoSavePos() {
@@ -207,8 +203,8 @@ void servoWandListen() {
   stopServerRun();
 
   // freeze atomic values
-  int32_t upBound = Calibration::UpTicks;
-  int32_t downBound = Calibration::DownTicks;
+  int32_t upBound = calib.UpTicks;
+  int32_t downBound = calib.DownTicks;
   int32_t bottomCount = bottomEnc->getCount();
   int32_t topCount = topEnc->getCount();
 
@@ -261,10 +257,10 @@ void servoServerListen() {
 void runToAppPos(uint8_t appPos) {
   // manual control takes precedence over remote control, always.
   // also do not begin operation if not calibrated;
-  if (runningManual || !Calibration::getCalibrated()) return;
+  if (runningManual || !calib.getCalibrated()) return;
   servoOff();
 
-  target = Calibration::convertToTicks(appPos); // calculate target encoder position
+  target = calib.convertToTicks(appPos); // calculate target encoder position
   printf("runToAppPos Called, running to %d from %d", target.load(), topEnc->getCount());
 
   // allow servo position to settle
@@ -276,82 +272,4 @@ void runToAppPos(uint8_t appPos) {
   if (startLess) servoOn(CCW, server); // begin servo movement
   else servoOn(CW, server);
   topEnc->serverListen.store(true, std::memory_order_release); // start listening for shutoff point
-}
-
-// Servo control task - processes encoder events and servo commands
-void servoControlTask(void* arg) {
-    encoder_event_t enc_event;
-    servo_cmd_msg_t cmd;
-    
-    printf("Servo control task started\n");
-    
-    while (1) {
-        // Block waiting for encoder events (higher priority)
-        if (xQueueReceive(g_encoder_event_queue, &enc_event, pdMS_TO_TICKS(10)) == pdTRUE) {
-            // Process encoder event (work that was done in ISR before)
-            
-            // Handle calibration listening
-            if (calibListen) {
-              servoCalibListen();
-            }
-            
-            // Only process top encoder events for watchdog and listeners
-            if (enc_event.is_top_encoder) {
-                // Feed watchdog in task context (not ISR)
-                if (topEnc->feedWDog) {
-                  esp_timer_stop(topEnc->watchdog_handle);
-                  esp_timer_start_once(topEnc->watchdog_handle, 500000);
-                  debugLEDTgl();
-                }
-                
-                // Check wand listener - now safe in task context
-                if (topEnc->wandListen) {
-                    servoWandListen();
-                }
-                
-                // Check server listener - now safe in task context
-                if (topEnc->serverListen) {
-                    servoServerListen();
-                }
-            }
-
-            // Only process top encoder events for watchdog and listeners
-            else {
-                // Feed watchdog in task context (not ISR)
-                if (bottomEnc->feedWDog) {
-                  esp_timer_stop(bottomEnc->watchdog_handle);
-                  esp_timer_start_once(bottomEnc->watchdog_handle, 500000);
-                  debugLEDTgl();
-                }
-                
-                // Check wand listener - now safe in task context
-                if (bottomEnc->wandListen) {
-                    servoWandListen();
-                }
-                
-                // Check server listener - now safe in task context
-                if (bottomEnc->serverListen) {
-                    servoServerListen();
-                }
-            }
-        }
-        
-        // Check for direct servo commands (lower priority)
-        if (xQueueReceive(g_servo_command_queue, &cmd, 0) == pdTRUE) {
-            switch (cmd.command) {
-                case SERVO_CMD_STOP:
-                    servoOff();
-                    break;
-                case SERVO_CMD_MOVE_CCW:
-                    servoOn(CCW, cmd.is_manual ? manual : server);
-                    break;
-                case SERVO_CMD_MOVE_CW:
-                    servoOn(CW, cmd.is_manual ? manual : server);
-                    break;
-                case SERVO_CMD_MOVE_TO_POSITION:
-                    runToAppPos(cmd.target_position);
-                    break;
-            }
-        }
-    }
 }
