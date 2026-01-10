@@ -6,16 +6,15 @@
 #include "bmHTTP.hpp"
 #include "socketIO.hpp"
 
+TaskHandle_t setupTaskHandle = NULL;
+
 void initialSetup() {
   printf("Entered Setup\n");
   NimBLEAdvertising* pAdv = initBLE();
-
-  while (!BLEtick(pAdv)) {
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
+  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 }
 
-void setupLoop() {
+void setupLoop(void *pvParameters) {
   bool initSuccess = false;
   while(!initSuccess) {
     nvs_handle_t WiFiHandle;

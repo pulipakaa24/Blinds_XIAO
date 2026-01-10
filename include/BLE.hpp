@@ -23,6 +23,17 @@ class MyCharCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 NimBLEAdvertising* initBLE();
-bool BLEtick(NimBLEAdvertising* pAdvertising);
+
+void BLE_manager_task(void *pvParameters);
+
+// Event Types
+typedef enum {
+  EVENT_SCAN_REQUESTED,
+  EVENT_TOKEN_GIVEN,
+  EVENT_CREDS_GIVEN,
+  EVENT_SHUTDOWN
+} BLE_event_type_t;
+
+bool tokenCheck();
 
 #endif

@@ -8,6 +8,7 @@
 #include "socketIO.hpp"
 #include "encoder.hpp"
 #include "calibration.hpp"
+#include "esp_pm.h"
 
 // Global encoder instances
 Encoder* topEnc = new Encoder(ENCODER_PIN_A, ENCODER_PIN_B);
@@ -35,62 +36,53 @@ void mainApp() {
   bottomEnc->init();
   servoInit();
 
-  setupLoop();
+  xTaskCreate(setupLoop, "Setup", 8192, NULL, 5, &setupTaskHandle);
   
-  statusResolved = false;
-
-  int32_t prevCount = topEnc->getCount();
+  // TOMORROW!!!
+  // statusResolved = false;
   
-  // Main loop
-  while (1) {
-    // websocket disconnect/reconnect handling
-    if (statusResolved) {
-      if (!connected) {
-        printf("Disconnected! Beginning setup loop.\n");
-        stopSocketIO();
-        setupLoop();
-      }
-      else printf("Reconnected!\n");
-      statusResolved = false;
-    }
+  // // Main loop
+  // while (1) {
+  //   // websocket disconnect/reconnect handling
+  //   if (statusResolved) {
+  //     if (!connected) {
+  //       printf("Disconnected! Beginning setup loop.\n");
+  //       stopSocketIO();
+  //       setupLoop();
+  //     }
+  //     else printf("Reconnected!\n");
+  //     statusResolved = false;
+  //   }
 
-    if (clearCalibFlag) {
-      calib.clearCalibrated();
-      emitCalibStatus(false);
-      clearCalibFlag = false;
-    }
-    if (savePosFlag) {
-      servoSavePos();
-      savePosFlag = false;
+  //   if (clearCalibFlag) {
+  //     calib.clearCalibrated();
+  //     emitCalibStatus(false);
+  //     clearCalibFlag = false;
+  //   }
+  //   if (savePosFlag) {
+  //     servoSavePos();
+  //     savePosFlag = false;
 
-      // Send position update to server
-      uint8_t currentAppPos = calib.convertToAppPos(topEnc->getCount());
-      emitPosHit(currentAppPos);
+  //     // Send position update to server
+  //     uint8_t currentAppPos = calib.convertToAppPos(topEnc->getCount());
+  //     emitPosHit(currentAppPos);
       
-      printf("Sent pos_hit: position %d\n", currentAppPos);
-    }
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
+  //     printf("Sent pos_hit: position %d\n", currentAppPos);
+  //   }
+  //   vTaskDelay(pdMS_TO_TICKS(100));
+  // }
 }
 
-void encoderTest() {
-  // Create encoder instance
-  Encoder encoder(ENCODER_PIN_A, ENCODER_PIN_B);
-  encoder.init();
-
-  int32_t prevCount = encoder.getCount();
-
-  while (1) {
-    int32_t currentCount = encoder.getCount();
-    if (currentCount != prevCount) {
-      prevCount = currentCount;
-      printf("Encoder Pos: %d\n", prevCount);
-    }
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
+void pm_init() {
+    esp_pm_config_t pm_config = {
+        .max_freq_mhz = 160,        // Max CPU frequency
+        .min_freq_mhz = 80,         // Min CPU frequency (DFS)
+        .light_sleep_enable = true  // ALLOW CPU to power down during idle
+    };
+    ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
 }
 
 extern "C" void app_main() {
+  pm_init();
   mainApp();
-  // encoderTest();
 }

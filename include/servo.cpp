@@ -23,7 +23,7 @@ void servoInit() {
   ledc_timer.timer_num = LEDC_TIMER_0;
   ledc_timer.duty_resolution = LEDC_TIMER_16_BIT;
   ledc_timer.freq_hz = 50;
-  ledc_timer.clk_cfg = LEDC_AUTO_CLK;
+  ledc_timer.clk_cfg = LEDC_USE_RC_FAST_CLK;
   ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
 
   // LEDC channel configuration
@@ -35,7 +35,9 @@ void servoInit() {
   ledc_channel.gpio_num = servoPin;
   ledc_channel.duty = offSpeed; // Start off
   ledc_channel.hpoint = 0;
+  ledc_channel.sleep_mode = LEDC_SLEEP_MODE_KEEP_ALIVE;
   ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+  gpio_sleep_sel_dis(servoPin);
 
   // Configure servo power switch pin as output
   gpio_set_direction(servoSwitch, GPIO_MODE_OUTPUT);
