@@ -8,6 +8,8 @@
 #include "bmHTTP.hpp"
 #include <freertos/queue.h>
 #include "setup.hpp"
+#include "esp_mac.h"
+
 
 std::atomic<bool> flag_scan_requested{false};
 std::atomic<bool> isBLEClientConnected{false};
@@ -28,6 +30,7 @@ std::atomic<NimBLECharacteristic*> authConfirmChar = nullptr;
 std::atomic<NimBLECharacteristic*> credsChar = nullptr;
 std::atomic<NimBLECharacteristic*> tokenChar = nullptr;
 std::atomic<NimBLECharacteristic*> ssidRefreshChar = nullptr;
+std::atomic<NimBLECharacteristic*> deviceInfoChar = nullptr;
 
 static QueueHandle_t BLE_event_queue = NULL;
 static TaskHandle_t BLE_manager_task_handle = NULL;
@@ -99,6 +102,27 @@ NimBLEAdvertising* initBLE() {
                           NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
                         );
   connectConfirmChar.load()->createDescriptor("2902"); // Add BLE2902 descriptor for notifications
+
+  // 0x0006 - Device Info (READ) - MAC address and other device details
+  deviceInfoChar = pService->createCharacteristic(
+                          "0006",
+                          NIMBLE_PROPERTY::READ
+                        );
+  // Build device info JSON with MAC address
+  uint8_t mac[6];
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X", 
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  
+  cJSON *infoRoot = cJSON_CreateObject();
+  cJSON_AddStringToObject(infoRoot, "mac", macStr);
+  cJSON_AddStringToObject(infoRoot, "firmware", "1.0.0");
+  cJSON_AddStringToObject(infoRoot, "model", "BlindMaster-C6");
+  char *infoJson = cJSON_PrintUnformatted(infoRoot);
+  deviceInfoChar.load()->setValue(std::string(infoJson));
+  cJSON_Delete(infoRoot);
+  free(infoJson);
 
   // Start
   pService->start();
