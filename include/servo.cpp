@@ -49,7 +49,7 @@ void servoInit() {
   gpio_set_level(debugLED, 0); // Start with LED off
 
   topEnc->count = servoReadPos();
-  if (calib.getCalibrated()) initMainLoop();
+  if (Calibration::getCalibrated()) initMainLoop();
   debugLEDSwitch(1);
 }
 
@@ -89,7 +89,7 @@ bool servoInitCalib() {
   bottomEnc->wandListen.store(false, std::memory_order_release);
   topEnc->wandListen.store(false, std::memory_order_release);
   topEnc->serverListen.store(false, std::memory_order_release);
-  if (!calib.clearCalibrated()) return false;
+  if (!Calibration::clearCalibrated()) return false;
   if (topEnc == nullptr || bottomEnc == nullptr) {
     printf("ERROR: CALIBRATION STARTED BEFORE SERVO INITIALIZATION\n");
     return false;
@@ -119,7 +119,7 @@ bool servoBeginDownwardCalib() {
   calibListen = false;
   servoOff();
   vTaskDelay(pdMS_TO_TICKS(1000));
-  if (!calib.beginDownwardCalib(*topEnc)) return false;
+  if (!Calibration::beginDownwardCalib(*topEnc)) return false;
   baseDiff = bottomEnc->getCount() - topEnc->getCount();
   calibListen = true;
   return true;
@@ -129,7 +129,7 @@ bool servoCompleteCalib() {
   calibListen = false;
   servoOff();
   vTaskDelay(pdMS_TO_TICKS(1000));
-  if (!calib.completeCalib(*topEnc)) return false;
+  if (!Calibration::completeCalib(*topEnc)) return false;
   initMainLoop();
   return true;
 }
@@ -205,8 +205,8 @@ void servoWandListen() {
   stopServerRun();
 
   // freeze atomic values
-  int32_t upBound = calib.UpTicks;
-  int32_t downBound = calib.DownTicks;
+  int32_t upBound = Calibration::UpTicks;
+  int32_t downBound = Calibration::DownTicks;
   int32_t bottomCount = bottomEnc->getCount();
   int32_t topCount = topEnc->getCount();
 
@@ -259,10 +259,10 @@ void servoServerListen() {
 void runToAppPos(uint8_t appPos) {
   // manual control takes precedence over remote control, always.
   // also do not begin operation if not calibrated;
-  if (runningManual || !calib.getCalibrated()) return;
+  if (runningManual || !Calibration::getCalibrated()) return;
   servoOff();
 
-  target = calib.convertToTicks(appPos); // calculate target encoder position
+  target = Calibration::convertToTicks(appPos); // calculate target encoder position
   printf("runToAppPos Called, running to %d from %d", target.load(), topEnc->getCount());
 
   // allow servo position to settle

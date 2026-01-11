@@ -27,6 +27,4 @@ class WiFi {
   static std::string getIP();
 };
 
-extern WiFi bmWiFi;
-
 #endif

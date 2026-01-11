@@ -16,8 +16,9 @@ Encoder* bottomEnc = new Encoder(InputEnc_PIN_A, InputEnc_PIN_B);
 
 // Global encoder pointers (used by servo.cpp)
 
-// Global calibration instance
-Calibration calib;
+void MainTask(void *pvParameters) {
+
+}
 
 void mainApp() {
   esp_err_t ret = nvs_flash_init(); // change to secure init logic soon!!
@@ -28,15 +29,16 @@ void mainApp() {
   }
   ESP_ERROR_CHECK(ret);
 
-  bmWiFi.init();
-  calib.init();
+  WiFi::init();
+  Calibration::init();
   
   // Initialize encoders
   topEnc->init();
   bottomEnc->init();
   servoInit();
 
-  xTaskCreate(setupLoop, "Setup", 8192, NULL, 5, &setupTaskHandle);
+  xTaskCreate(setupLoop, "Setup", 8192, xTaskGetCurrentTaskHandle(), 5, &setupTaskHandle);
+  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
   
   // TOMORROW!!!
   // statusResolved = false;

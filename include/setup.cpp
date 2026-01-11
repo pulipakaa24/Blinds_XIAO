@@ -15,6 +15,7 @@ void initialSetup() {
 }
 
 void setupLoop(void *pvParameters) {
+  TaskHandle_t parent_handle = (TaskHandle_t)pvParameters;
   bool initSuccess = false;
   while(!initSuccess) {
     nvs_handle_t WiFiHandle;
@@ -36,7 +37,7 @@ void setupLoop(void *pvParameters) {
         char pw[pwSize];
         nvs_get_str(WiFiHandle, passTag, pw, &pwSize);
         nvs_close(WiFiHandle);
-        if (!bmWiFi.attemptConnect(ssid, pw, (wifi_auth_mode_t)authMode)) {
+        if (!WiFi::attemptConnect(ssid, pw, (wifi_auth_mode_t)authMode)) {
           // Make RGB LED certain color (Blue?)
           printf("Found credentials, failed to connect.\n");
           initialSetup();
@@ -102,4 +103,6 @@ void setupLoop(void *pvParameters) {
       initialSetup();
     }
   }
+  xTaskNotifyGive(parent_handle);
+  vTaskDelete(NULL);
 }

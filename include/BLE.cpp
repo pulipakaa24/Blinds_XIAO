@@ -266,7 +266,7 @@ void BLE_manager_task(void *pvParameters) {
         if (!scanBlock) {
           scanBlock = true;
           printf("Scanning WiFi...\n");
-          bmWiFi.scanAndUpdateSSIDList();
+          WiFi::scanAndUpdateSSIDList();
         }
         else printf("Duplicate scan request\n");
       }
@@ -285,12 +285,12 @@ void BLE_manager_task(void *pvParameters) {
       else if (received_event_type == EVENT_SHUTDOWN) break;
     }
   }
-  xSemaphoreGive(BLE_Queue_Shutdown_Semaphore);
+  xSemaphoreGive(BLE_Queue_Shutdown_Semaphore); // this is null-safe
   vTaskDelete(NULL);
 }
 
 bool tokenCheck() {
-  if (!bmWiFi.isConnected()) {
+  if (!WiFi::isConnected()) {
     printf("ERROR: token given without WiFi connection\n");
     notifyAuthStatus(false);
     return false;
@@ -353,8 +353,8 @@ bool attemptUseWiFiCreds() {
 
   bool wifiConnect;
   if (tmpAUTH == WIFI_AUTH_WPA2_ENTERPRISE || tmpAUTH == WIFI_AUTH_WPA3_ENTERPRISE)
-    wifiConnect = bmWiFi.attemptConnect(tmpSSID.c_str(), tmpUNAME.c_str(), tmpPASS.c_str(), tmpAUTH);
-  else wifiConnect = bmWiFi.attemptConnect(tmpSSID.c_str(), tmpPASS.c_str(), tmpAUTH);
+    wifiConnect = WiFi::attemptConnect(tmpSSID.c_str(), tmpUNAME.c_str(), tmpPASS.c_str(), tmpAUTH);
+  else wifiConnect = WiFi::attemptConnect(tmpSSID.c_str(), tmpPASS.c_str(), tmpAUTH);
   if (!wifiConnect) {
     // notify errored
     notifyConnectionStatus(false);

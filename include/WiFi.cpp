@@ -12,8 +12,6 @@ esp_event_handler_instance_t WiFi::instance_got_ip = NULL;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_STARTED_BIT BIT1
 
-WiFi bmWiFi;
-
 // The Event Handler (The engine room)
 void WiFi::event_handler(void* arg, esp_event_base_t event_base,
                           int32_t event_id, void* event_data) {
