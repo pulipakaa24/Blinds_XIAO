@@ -11,9 +11,7 @@
 
 static esp_socketio_client_handle_t io_client;
 static esp_socketio_packet_handle_t tx_packet = NULL;
-
-std::atomic<bool> statusResolved{true};
-std::atomic<bool> connected{false};
+static bool stopSocketFlag = false;
 
 // Event handler for Socket.IO events
 static void socketio_event_handler(void *handler_args, esp_event_base_t base, 
@@ -65,8 +63,8 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
               }
               
               // Mark connection as failed
-              connected = false;
-              statusResolved = true;
+              if (calibTaskHandle != NULL)
+                xTaskNotify(calibTaskHandle, false, eSetValueWithOverwrite);
             }
             // Handle device_init event
             else if (strcmp(eventName->valuestring, "device_init") == 0) {
@@ -91,25 +89,18 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                       // TODO: UPDATE MOTOR/ENCODER STATES BASED ON THIS, as well as the successive websocket updates.
                       printf("  Port %d: pos=%d\n", port, lastPos);
                       if (port != 1) printf("ERROR: NON-1 PORT RECEIVED\n");
-                      // Report back actual calibration status from device
-                      else {
-                        bool deviceCalibrated = Calibration::getCalibrated();
-                        emitCalibStatus(deviceCalibrated);
-                        printf("  Reported calibrated=%d for port %d\n", deviceCalibrated, port);
-                        runToAppPos(lastPos);
-                      }
                     }
                   }
                   
                   // Now mark as connected
-                  connected = true;
-                  statusResolved = true;
+                  if (calibTaskHandle != NULL)
+                    xTaskNotify(calibTaskHandle, true, eSetValueWithOverwrite);
                 } else {
                   printf("Device authentication failed\n");
                   Calibration::clearCalibrated();
                   deleteWiFiAndTokenDetails();
-                  connected = false;
-                  statusResolved = true;
+                  if (calibTaskHandle != NULL)
+                    xTaskNotify(calibTaskHandle, false, eSetValueWithOverwrite);
                 }
               }
             }
@@ -125,8 +116,8 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
               }
               Calibration::clearCalibrated();
               deleteWiFiAndTokenDetails();
-              connected = false;
-              statusResolved = true;
+              if (calibTaskHandle != NULL)
+                xTaskNotify(calibTaskHandle, false, eSetValueWithOverwrite);
             }
 
             // Handle calib_start event
@@ -188,13 +179,21 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                   }
                   else {
                     if (!servoCompleteCalib()) emitCalibError("Completion failed");
-                    else emitCalibDone();
+                    else {
+                      emitCalibDone();
+                    }
                   }
                 }
               }
             }
+            
+            // Handle calib_done_ack event
+            else if (strcmp(eventName->valuestring, "calib_done_ack") == 0) {
+              printf("Server acknowledged calibration completion - safe to disconnect\n");
+              stopSocketFlag = true;
+            }
 
-            // Handle user_stage1_complete event
+            // Handle cancel_calib event
             else if (strcmp(eventName->valuestring, "cancel_calib") == 0) {
               printf("Canceling calibration process...\n");
               cJSON *data = cJSON_GetArrayItem(json, 1);
@@ -208,37 +207,6 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
                   else {
                     servoCancelCalib();
                   }
-                }
-              }
-            }
-            
-            // Handle server position change (manual or scheduled)
-            else if (strcmp(eventName->valuestring, "posUpdates") == 0) {
-              printf("Received position update from server\n");
-              cJSON *updateList = cJSON_GetArrayItem(json, 1);
-              
-              if (cJSON_IsArray(updateList)) {
-                int updateCount = cJSON_GetArraySize(updateList);
-                printf("Processing %d position update(s)\n", updateCount);
-                
-                for (int i = 0; i < updateCount; i++) {
-                  cJSON *update = cJSON_GetArrayItem(updateList, i);
-                  cJSON *periphNum = cJSON_GetObjectItem(update, "periphNum");
-                  cJSON *pos = cJSON_GetObjectItem(update, "pos");
-                  
-                  if (periphNum && cJSON_IsNumber(periphNum) && 
-                      pos && cJSON_IsNumber(pos)) {
-                    int port = periphNum->valueint;
-                    int position = pos->valueint;
-                    
-                    if (port != 1)
-                      printf("ERROR: Received position update for non-1 port: %d\n", port);
-                    else {
-                      printf("Position update: position %d\n", position);
-                      runToAppPos(position);
-                    }
-                  } 
-                  else printf("Invalid position update format\n");
                 }
               }
             }
@@ -293,8 +261,8 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
           }
       }
       
-      connected = false;
-      statusResolved = true;
+      if (calibTaskHandle != NULL)
+        xTaskNotify(calibTaskHandle, false, eSetValueWithOverwrite);
       break;
     }
   }
@@ -302,18 +270,21 @@ static void socketio_event_handler(void *handler_args, esp_event_base_t base,
   // Handle WebSocket-level disconnections
   if (data->websocket_event_id == WEBSOCKET_EVENT_DISCONNECTED) {
     printf("WebSocket disconnected\n");
-    connected = false;
-    statusResolved = true;
+    if (calibTaskHandle != NULL)
+      xTaskNotify(calibTaskHandle, false, eSetValueWithOverwrite);
+  }
+  if (stopSocketFlag) {
+    if (calibTaskHandle != NULL)
+      xTaskNotify(calibTaskHandle, 2, eSetValueWithOverwrite);
+    stopSocketFlag = false; // Clear flag after notifying once
   }
 }
 
 const std::string uriString = std::string("ws") + (secureSrv ? "s" : "") + "://" + srvAddr + "/socket.io/?EIO=4&transport=websocket";
 void initSocketIO() {
+  stopSocketFlag = false; // Reset flag for new connection
   // Prepare the Authorization Header (Bearer format)
   std::string authHeader = "Authorization: Bearer " + webToken + "\r\n";
-
-  statusResolved = false;
-  connected = false;
   
   esp_socketio_client_config_t config = {};
   config.websocket_config.uri = uriString.c_str();
@@ -338,8 +309,6 @@ void stopSocketIO() {
     esp_socketio_client_destroy(io_client);
     io_client = NULL;
     tx_packet = NULL;
-    connected = false;
-    statusResolved = false;
   }
 }
 

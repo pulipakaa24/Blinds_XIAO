@@ -9,16 +9,11 @@
 #include "encoder.hpp"
 #include "calibration.hpp"
 #include "esp_pm.h"
+#include "mainEventLoop.hpp"
 
 // Global encoder instances
 Encoder* topEnc = new Encoder(ENCODER_PIN_A, ENCODER_PIN_B);
 Encoder* bottomEnc = new Encoder(InputEnc_PIN_A, InputEnc_PIN_B);
-
-// Global encoder pointers (used by servo.cpp)
-
-void MainTask(void *pvParameters) {
-
-}
 
 void mainApp() {
   esp_err_t ret = nvs_flash_init(); // change to secure init logic soon!!
@@ -37,8 +32,11 @@ void mainApp() {
   bottomEnc->init();
   servoInit();
 
-  xTaskCreate(setupLoop, "Setup", 8192, xTaskGetCurrentTaskHandle(), 5, &setupTaskHandle);
-  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  setupAndCalibrate();
+
+  xTaskCreate(wakeTimer, "wakeTimer", 1024, NULL, 5, &wakeTaskHandle);
+
+  mainEventLoop();
   
   // TOMORROW!!!
   // statusResolved = false;

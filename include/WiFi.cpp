@@ -2,8 +2,9 @@
 #include "esp_eap_client.h"
 #include "cJSON.h" // Native replacement for ArduinoJson
 #include "BLE.hpp"
+#include "esp_wifi_he.h"
 
-std::atomic<bool> WiFi::authFailed{false};
+TaskHandle_t WiFi::awaitConnectHandle = NULL;
 EventGroupHandle_t WiFi::s_wifi_event_group = NULL;
 esp_netif_t* WiFi::netif = NULL;
 esp_event_handler_instance_t WiFi::instance_any_id = NULL;
@@ -36,12 +37,16 @@ void WiFi::event_handler(void* arg, esp_event_base_t event_base,
       case WIFI_REASON_AUTH_FAIL:                 // Reason 202
       case WIFI_REASON_HANDSHAKE_TIMEOUT:         // Reason 204
         printf("ERROR: Likely Wrong Password!\n");
-        authFailed = true;
+        if (awaitConnectHandle != NULL) {
+          xTaskNotify(awaitConnectHandle, false, eSetValueWithOverwrite);
+        }
         break;
           
       case WIFI_REASON_NO_AP_FOUND:               // Reason 201
         printf("ERROR: SSID Not Found\n");
-        authFailed = true;
+        if (awaitConnectHandle != NULL) {
+          xTaskNotify(awaitConnectHandle, false, eSetValueWithOverwrite);
+        }
         break;
       
       case WIFI_REASON_ASSOC_LEAVE:               // Reason 8 - Manual disconnect
@@ -51,11 +56,13 @@ void WiFi::event_handler(void* arg, esp_event_base_t event_base,
       case WIFI_REASON_ASSOC_FAIL:                // Reason 203 (Can be AP busy/rate limiting)
         printf("Association failed, will retry...\n");
         vTaskDelay(pdMS_TO_TICKS(1000)); // Wait 1 second before retry to avoid rate limiting
+        esp_netif_dhcpc_start(netif);
         esp_wifi_connect();
         break;
           
       default:
         printf("Retrying...\n");
+        esp_netif_dhcpc_start(netif);
         esp_wifi_connect();
         break;
     }
@@ -72,7 +79,11 @@ void WiFi::event_handler(void* arg, esp_event_base_t event_base,
   else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
     printf("Got IP: " IPSTR "\n", IP2STR(&event->ip_info.ip));
+    esp_netif_dhcpc_stop(netif);
     xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+    if (awaitConnectHandle != NULL) {
+      xTaskNotify(awaitConnectHandle, true, eSetValueWithOverwrite);
+    }
   }
 }
 
@@ -108,6 +119,7 @@ void WiFi::init() {
 
   ESP_ERROR_CHECK(esp_wifi_start());
   xEventGroupWaitBits(s_wifi_event_group, WIFI_STARTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+  awaitConnectHandle = NULL;
 }
 
 // --- CHECK STATUS ---
@@ -170,19 +182,46 @@ bool WiFi::attemptConnect(const std::string ssid, const std::string uname,
 }
 
 bool WiFi::awaitConnected() {
-  authFailed = false;
-  if (esp_wifi_connect() != ESP_OK) return false;
+  awaitConnectHandle = xTaskGetCurrentTaskHandle();
+  if (esp_wifi_connect() != ESP_OK) {
+    awaitConnectHandle = NULL;
+    return false;
+  }
 
-  uint8_t attempts = 0;
-  while (!isConnected() && attempts < 20) {
-    if (authFailed) {
+  uint32_t status;
+  uint8_t MAX_TIMEOUT = 10; //seconds
+  if (xTaskNotifyWait(0, ULONG_MAX, &status, pdMS_TO_TICKS(MAX_TIMEOUT * 1000)) == pdTRUE) {
+    awaitConnectHandle = NULL;
+    if (!status) {
       printf("SSID/Password was wrong! Aborting connection attempt.\n");
       return false;
     }
-    vTaskDelay(500);
-    attempts++;
+  } else {
+    // Timeout - check if connected anyway
+    awaitConnectHandle = NULL;
   }
-  if (isConnected()) return true;
+  
+  if (isConnected()) {
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    uint8_t protocol_bitmap = 0;
+    esp_err_t err = esp_wifi_get_protocol(WIFI_IF_STA, &protocol_bitmap);
+
+    if (err == ESP_OK && (protocol_bitmap & WIFI_PROTOCOL_11AX)) {
+      // WiFi 6 (802.11ax) - Use Target Wake Time (TWT) for power saving
+      wifi_twt_setup_config_t twt_config = {
+        .setup_cmd = TWT_REQUEST,
+        .trigger = true,
+        .flow_type = 0, // Announced
+        .flow_id = 0,
+        .wake_invl_expn = 12, // Exponent for interval
+        .min_wake_dura = 255, // ~65ms (unit is 256 microseconds)
+        .wake_invl_mant = 14648, // Mantissa (mant * 2^exp = 60,000,000 us = 60s)
+        .timeout_time_ms = 5000,
+      };
+      esp_wifi_sta_itwt_setup(&twt_config);
+    }
+    return true;
+  }
   return false;
 }
 
@@ -190,8 +229,6 @@ bool WiFi::awaitConnected() {
 void WiFi::scanAndUpdateSSIDList() {
   printf("Starting WiFi Scan...\n");
 
-  // 1. Start Scan (Blocking Mode = true)
-  // In blocking mode, this function waits here until scan is done (~2 seconds)
   esp_wifi_sta_enterprise_disable();
   esp_wifi_disconnect();
 
@@ -222,7 +259,13 @@ void WiFi::processScanResults() {
     printf("Heap allocation error in processScanResults\n");
     return;
   }
-  ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&ap_count, ap_list));
+  
+  esp_err_t err = esp_wifi_scan_get_ap_records(&ap_count, ap_list);
+  if (err != ESP_OK) {
+    printf("Failed to get scan records\n");
+    free(ap_list);
+    return;
+  }
 
   // 3. Build JSON using cJSON
   cJSON *root = cJSON_CreateArray();
@@ -254,4 +297,24 @@ void WiFi::processScanResults() {
   free(ap_list);
   cJSON_Delete(root); // This deletes all children (items) too
   free(json_string);  // cJSON_Print allocates memory, you must free it
+}
+
+bool WiFi::attemptDHCPrenewal() {
+  xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+  esp_netif_dhcpc_start(netif);
+  EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, 
+                                        WIFI_CONNECTED_BIT, 
+                                        pdFALSE, 
+                                        pdFALSE, 
+                                        pdMS_TO_TICKS(4000));
+  
+  if (bits & WIFI_CONNECTED_BIT) {
+    printf("renewal success");
+    // Stop the client again to save power.
+    esp_netif_dhcpc_stop(netif);
+    return true;
+  }
+  printf("DHCP Renewal failed. Reconnecting Wi-Fi...\n");
+  esp_wifi_disconnect();
+  return awaitConnected();
 }

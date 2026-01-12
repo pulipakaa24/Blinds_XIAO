@@ -1,3 +1,4 @@
+#include "freertos/FreeRTOS.h"
 #include "setup.hpp"
 #include "BLE.hpp"
 #include "WiFi.hpp"
@@ -5,17 +6,31 @@
 #include "defines.h"
 #include "bmHTTP.hpp"
 #include "socketIO.hpp"
+#include "calibration.hpp"
 
 TaskHandle_t setupTaskHandle = NULL;
 
+std::atomic<bool> awaitCalibration{false};
+
 void initialSetup() {
   printf("Entered Setup\n");
-  NimBLEAdvertising* pAdv = initBLE();
+  initBLE();
   ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  setupTaskHandle = NULL;
 }
 
-void setupLoop(void *pvParameters) {
-  TaskHandle_t parent_handle = (TaskHandle_t)pvParameters;
+void setupAndCalibrate() {
+  while (1) {
+    setupLoop();
+    if (awaitCalibration) {
+      if (calibrate()) break;
+    }
+    else break;
+  }
+}
+
+void setupLoop() {
+  setupTaskHandle = xTaskGetCurrentTaskHandle();
   bool initSuccess = false;
   while(!initSuccess) {
     nvs_handle_t WiFiHandle;
@@ -31,7 +46,9 @@ void setupLoop(void *pvParameters) {
         // Make the RGB LED a certain color (Blue?)
         nvs_close(WiFiHandle);
         initialSetup();
-      } else if (WiFiPrefsError == ESP_OK) {
+        continue;
+      } 
+      else if (WiFiPrefsError == ESP_OK) {
         char ssid[ssidSize];
         nvs_get_str(WiFiHandle, ssidTag, ssid, &ssidSize);
         char pw[pwSize];
@@ -41,6 +58,7 @@ void setupLoop(void *pvParameters) {
           // Make RGB LED certain color (Blue?)
           printf("Found credentials, failed to connect.\n");
           initialSetup();
+          continue;
         }
         else {
           printf("Connected to WiFi from NVS credentials\n");
@@ -55,31 +73,86 @@ void setupLoop(void *pvParameters) {
               // Use permanent device token to connect to Socket.IO
               // The server will verify the token during connection handshake
               webToken = std::string(token);
-              printf("Connecting to Socket.IO server with saved token...\n");
-              statusResolved = false;
-              initSocketIO();
-              
-              // Wait for device_init message from server with timeout
-              int timeout_count = 0;
-              const int MAX_TIMEOUT = 60; // 10 seconds (20 * 500ms)
-              while (!statusResolved && timeout_count < MAX_TIMEOUT) {
-                printf("Waiting for device_init message... (%d/%d)\n", timeout_count, MAX_TIMEOUT);
-                vTaskDelay(pdMS_TO_TICKS(500));
-                timeout_count++;
-              }
-              
-              if (timeout_count >= MAX_TIMEOUT) {
-                printf("Timeout waiting for device_init - connection failed\n");
-                stopSocketIO();
-                initSuccess = false;
+              cJSON* response = nullptr;
+              initSuccess = httpGET("position", webToken, response);
+              if (!initSuccess) {
                 initialSetup();
-              } else {
-                initSuccess = connected;
-                if (!initSuccess) {
-                  printf("Device authentication failed - entering setup\n");
-                  initialSetup();
-                }
+                continue;
               }
+              initSuccess = false;
+
+              if (response != NULL) {
+                // Check if response is an array
+                if (cJSON_IsArray(response)) {
+                  int arraySize = cJSON_GetArraySize(response);
+                  
+                  // Condition 1: More than one object in array
+                  if (arraySize > 1) {
+                    printf("Multiple peripherals detected, entering setup.\n");
+                    cJSON_Delete(response);
+                    initialSetup();
+                    continue;
+                  }
+                  // Condition 2: Check peripheral_number in first object
+                  else if (arraySize > 0) {
+                    cJSON *firstObject = cJSON_GetArrayItem(response, 0);
+                    if (firstObject != NULL) {
+                      cJSON *peripheralNum = cJSON_GetObjectItem(firstObject, "peripheral_number");
+                      if (cJSON_IsNumber(peripheralNum) && peripheralNum->valueint != 1) {
+                        printf("Peripheral number is not 1, entering setup.\n");
+                        cJSON_Delete(response);
+                        initialSetup();
+                        continue;
+                      }
+                      // Valid single peripheral with number 1, continue with normal flow
+                      initSuccess = true;
+                      printf("Verified new token!\n");
+
+                      cJSON *awaitCalib = cJSON_GetObjectItem(firstObject, "await_calib");
+                      if (cJSON_IsBool(awaitCalib)) awaitCalibration = awaitCalib->valueint;
+                      cJSON_Delete(response);
+                      if (!awaitCalibration) {
+                        // Create calibration status object
+                        cJSON* calibPostObj = cJSON_CreateObject();
+                        cJSON_AddNumberToObject(calibPostObj, "port", 1);
+                        cJSON_AddBoolToObject(calibPostObj, "calibrated", Calibration::getCalibrated());
+                        
+                        // Send calibration status to server
+                        cJSON* calibResponse = nullptr;
+                        bool calibSuccess = httpPOST("report_calib_status", webToken, calibPostObj, calibResponse);
+                        
+                        if (calibSuccess && calibResponse != NULL) {
+                          printf("Calibration status reported successfully\n");
+                          cJSON_Delete(calibResponse);
+                        } else {
+                          printf("Failed to report calibration status\n");
+                        }
+                        cJSON_Delete(calibPostObj);
+                        if (!Calibration::getCalibrated()) awaitCalibration = true;
+                      }
+                    }
+                    else {
+                      printf("null object\n");
+                      cJSON_Delete(response);
+                      initialSetup();
+                      continue;
+                    }
+                  }
+                  else {
+                    printf("no items in array\n");
+                    cJSON_Delete(response);
+                    initialSetup();
+                    continue;
+                  }
+                }
+                else {
+                  printf("Response not array\n");
+                  cJSON_Delete(response);
+                  initialSetup();
+                  continue;
+                }
+              } 
+              else printf("Failed to parse JSON response\n");
             }
             else {
               printf("Token read unsuccessful, entering setup.\n");
@@ -103,6 +176,5 @@ void setupLoop(void *pvParameters) {
       initialSetup();
     }
   }
-  xTaskNotifyGive(parent_handle);
-  vTaskDelete(NULL);
+  setupTaskHandle = NULL; // Clear handle on function exit (safety)
 }

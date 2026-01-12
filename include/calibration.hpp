@@ -1,5 +1,7 @@
 #ifndef CALIBRATION_H
 #define CALIBRATION_H
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <atomic>
 #include "encoder.hpp"
 
@@ -18,5 +20,8 @@ class Calibration {
   private:
     static std::atomic<bool> calibrated;
 };
+
+extern TaskHandle_t calibTaskHandle;
+bool calibrate();
 
 #endif

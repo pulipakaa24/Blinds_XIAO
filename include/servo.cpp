@@ -1,10 +1,12 @@
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "servo.hpp"
 #include "driver/ledc.h"
 #include "defines.h"
-#include <freertos/FreeRTOS.h>
 #include "esp_log.h"
 #include "socketIO.hpp"
 #include "nvs_flash.h"
+#include "mainEventLoop.hpp"
 
 std::atomic<bool> calibListen{false};
 std::atomic<int32_t> baseDiff{0};
@@ -12,8 +14,6 @@ std::atomic<int32_t> target{0};
 
 std::atomic<bool> runningManual{false};
 std::atomic<bool> runningServer{false};
-std::atomic<bool> clearCalibFlag{false};
-std::atomic<bool> savePosFlag{false};
 std::atomic<bool> startLess{false};
 
 void servoInit() {
@@ -142,8 +142,10 @@ void initMainLoop() {
 
 void IRAM_ATTR watchdogCallback(void* arg) {
   if (runningManual || runningServer) {
-    // if we're trying to move and our timer ran out, we need to recalibrate
-    clearCalibFlag = true;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    main_event_type_t evt = EVENT_CLEAR_CALIB;
+    BaseType_t result = xQueueSendFromISR(main_event_queue, &evt, &xHigherPriorityTaskWoken);
+    if (result == pdPASS) portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     topEnc->pauseWatchdog();
 
     // get ready for recalibration by clearing all these listeners
@@ -155,7 +157,10 @@ void IRAM_ATTR watchdogCallback(void* arg) {
   else {
     // if no movement is running, we're fine
     // save current servo-encoder position for reinitialization
-    savePosFlag = true;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    main_event_type_t evt = EVENT_SAVE_POS;
+    BaseType_t result = xQueueSendFromISR(main_event_queue, &evt, &xHigherPriorityTaskWoken);
+    if (result == pdPASS) portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   }
   // clear running flags
   runningManual = false;

@@ -14,9 +14,10 @@ class WiFi {
     const std::string password, const wifi_auth_mode_t authMode);
   static bool isConnected();
   static void scanAndUpdateSSIDList();
+  static bool attemptDHCPrenewal();
   private:
+  static TaskHandle_t awaitConnectHandle;
   static void processScanResults();
-  static std::atomic<bool> authFailed;
   static bool awaitConnected();
   static esp_event_handler_instance_t instance_any_id;
   static esp_event_handler_instance_t instance_got_ip;

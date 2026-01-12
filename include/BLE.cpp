@@ -1,3 +1,6 @@
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
 #include "BLE.hpp"
 #include "NimBLEDevice.h"
 #include "WiFi.hpp"
@@ -6,7 +9,6 @@
 #include "defines.h"
 #include <mutex>
 #include "bmHTTP.hpp"
-#include <freertos/queue.h>
 #include "setup.hpp"
 #include "esp_mac.h"
 
@@ -26,6 +28,10 @@ static std::string UNAME = "";
 // Global pointers to characteristics for notification support
 std::atomic<NimBLECharacteristic*> ssidListChar = nullptr;
 std::atomic<NimBLECharacteristic*> connectConfirmChar = nullptr;
+
+// Forward declarations
+bool attemptUseWiFiCreds();
+bool tokenCheck();
 std::atomic<NimBLECharacteristic*> authConfirmChar = nullptr;
 std::atomic<NimBLECharacteristic*> credsChar = nullptr;
 std::atomic<NimBLECharacteristic*> tokenChar = nullptr;
@@ -382,7 +388,7 @@ bool attemptUseWiFiCreds() {
   if (!wifiConnect) {
     // notify errored
     notifyConnectionStatus(false);
-    return;
+    return false;
   }
 
   nvs_handle_t WiFiHandle;
@@ -391,7 +397,7 @@ bool attemptUseWiFiCreds() {
     printf("ERROR Saving Credentials\n");
     // notify errored
     notifyConnectionStatus(false);
-    return;
+    return false;
   }
   else {
     err = nvs_set_str(WiFiHandle, ssidTag, tmpSSID.c_str());
@@ -404,9 +410,11 @@ bool attemptUseWiFiCreds() {
   if (err == ESP_OK) {
     // notify connected
     notifyConnectionStatus(true);
+    return true;
   }
   else {
-    // notify connected
+    // notify errored
     notifyConnectionStatus(false);
+    return false;
   }
 }

@@ -10,8 +10,6 @@
 #define manual 0
 
 extern std::atomic<bool> calibListen;
-extern std::atomic<bool> clearCalibFlag;
-extern std::atomic<bool> savePosFlag;
 
 extern Encoder* topEnc;
 extern Encoder* bottomEnc;
