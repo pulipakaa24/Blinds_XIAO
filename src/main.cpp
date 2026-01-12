@@ -34,43 +34,9 @@ void mainApp() {
 
   setupAndCalibrate();
 
-  xTaskCreate(wakeTimer, "wakeTimer", 1024, NULL, 5, &wakeTaskHandle);
+  xTaskCreate(wakeTimer, "wakeTimer", 2048, NULL, 5, &wakeTaskHandle);
 
   mainEventLoop();
-  
-  // TOMORROW!!!
-  // statusResolved = false;
-  
-  // // Main loop
-  // while (1) {
-  //   // websocket disconnect/reconnect handling
-  //   if (statusResolved) {
-  //     if (!connected) {
-  //       printf("Disconnected! Beginning setup loop.\n");
-  //       stopSocketIO();
-  //       setupLoop();
-  //     }
-  //     else printf("Reconnected!\n");
-  //     statusResolved = false;
-  //   }
-
-  //   if (clearCalibFlag) {
-  //     calib.clearCalibrated();
-  //     emitCalibStatus(false);
-  //     clearCalibFlag = false;
-  //   }
-  //   if (savePosFlag) {
-  //     servoSavePos();
-  //     savePosFlag = false;
-
-  //     // Send position update to server
-  //     uint8_t currentAppPos = calib.convertToAppPos(topEnc->getCount());
-  //     emitPosHit(currentAppPos);
-      
-  //     printf("Sent pos_hit: position %d\n", currentAppPos);
-  //   }
-  //   vTaskDelay(pdMS_TO_TICKS(100));
-  // }
 }
 
 void pm_init() {
