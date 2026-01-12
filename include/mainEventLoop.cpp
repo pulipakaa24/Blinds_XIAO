@@ -6,12 +6,16 @@
 #include "cJSON.h"
 #include "encoder.hpp"
 #include "WiFi.hpp"
+#include "socketIO.hpp"
 
 TaskHandle_t wakeTaskHandle = NULL;
 
 void wakeTimer(void* pvParameters) {
   while (1) {
     vTaskDelay(pdMS_TO_TICKS(60000));
+    // avoid accumulating events during re-setup or calibration
+    if (setupTaskHandle != NULL || socketIOactive 
+        || uxQueueMessagesWaiting(main_event_queue) > 2) continue; 
     main_event_type_t evt = EVENT_REQUEST_POS;
     xQueueSend(main_event_queue, &evt, portMAX_DELAY);
   }

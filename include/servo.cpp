@@ -142,10 +142,6 @@ void initMainLoop() {
 
 void IRAM_ATTR watchdogCallback(void* arg) {
   if (runningManual || runningServer) {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    main_event_type_t evt = EVENT_CLEAR_CALIB;
-    BaseType_t result = xQueueSendFromISR(main_event_queue, &evt, &xHigherPriorityTaskWoken);
-    if (result == pdPASS) portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
     topEnc->pauseWatchdog();
 
     // get ready for recalibration by clearing all these listeners
@@ -153,6 +149,10 @@ void IRAM_ATTR watchdogCallback(void* arg) {
     topEnc->wandListen.store(false, std::memory_order_release);
     topEnc->serverListen.store(false, std::memory_order_release);
     servoOff();
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    main_event_type_t evt = EVENT_CLEAR_CALIB;
+    BaseType_t result = xQueueSendFromISR(main_event_queue, &evt, &xHigherPriorityTaskWoken);
+    if (result == pdPASS) portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   }
   else {
     // if no movement is running, we're fine

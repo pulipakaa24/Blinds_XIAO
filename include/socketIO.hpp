@@ -2,6 +2,8 @@
 #define SOCKETIO_HPP
 #include <atomic>
 
+extern std::atomic<bool> socketIOactive;
+
 // Initialize Socket.IO client and connect to server
 void initSocketIO();
 

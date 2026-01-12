@@ -12,6 +12,7 @@
 static esp_socketio_client_handle_t io_client;
 static esp_socketio_packet_handle_t tx_packet = NULL;
 static bool stopSocketFlag = false;
+std::atomic<bool> socketIOactive{false};
 
 // Event handler for Socket.IO events
 static void socketio_event_handler(void *handler_args, esp_event_base_t base, 
@@ -300,6 +301,8 @@ void initSocketIO() {
   
   esp_socketio_register_events(io_client, SOCKETIO_EVENT_ANY, socketio_event_handler, NULL);
   esp_socketio_client_start(io_client);
+
+  socketIOactive = true;
 }
 
 void stopSocketIO() {
@@ -310,6 +313,7 @@ void stopSocketIO() {
     io_client = NULL;
     tx_packet = NULL;
   }
+  socketIOactive = false;
 }
 
 // Helper function to emit Socket.IO event with data
