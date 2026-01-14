@@ -1,4 +1,7 @@
 #include <driver/gptimer.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
 #include "servo.hpp"
 #include "defines.h"
 #include "nvs_flash.h"
@@ -14,6 +17,8 @@
 // Global encoder instances
 Encoder* topEnc = new Encoder(ENCODER_PIN_A, ENCODER_PIN_B);
 Encoder* bottomEnc = new Encoder(InputEnc_PIN_A, InputEnc_PIN_B);
+
+// RTC_NOINIT_ATTR volatile uint8_t shared_battery_soc;
 
 void mainApp() {
   esp_err_t ret = nvs_flash_init(); // change to secure init logic soon!!
@@ -32,6 +37,8 @@ void mainApp() {
   bottomEnc->init();
   servoInit();
 
+  // printf("Loading LP Core Firmware for battery percentage\n");
+
   setupAndCalibrate();
 
   xTaskCreate(wakeTimer, "wakeTimer", 2048, NULL, 5, &wakeTaskHandle);
@@ -48,7 +55,56 @@ void pm_init() {
     ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
 }
 
+#define RPin GPIO_NUM_0
+#define BPin GPIO_NUM_21
+#define GPin GPIO_NUM_18
+
+void flashLED() {
+  gpio_set_direction(RPin, GPIO_MODE_OUTPUT);
+  gpio_set_direction(GPin, GPIO_MODE_OUTPUT);
+  gpio_set_direction(BPin, GPIO_MODE_OUTPUT);
+  gpio_sleep_sel_dis(RPin);
+  gpio_sleep_sel_dis(GPin);
+  gpio_sleep_sel_dis(BPin);
+  
+  // Start with all LEDs off
+  gpio_set_level(RPin, 0);
+  gpio_set_level(BPin, 0);
+  gpio_set_level(GPin, 0);
+
+  while (1) {
+    printf("Step1\n");
+    // Red ON
+    gpio_set_level(RPin, 1);
+    gpio_set_level(GPin, 0);
+    gpio_set_level(BPin, 0);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    printf("Step2\n");
+    // Green ON
+    gpio_set_level(RPin, 0);
+    gpio_set_level(GPin, 1);
+    gpio_set_level(BPin, 0);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    printf("Step3\n");
+    // Blue ON
+    gpio_set_level(RPin, 0);
+    gpio_set_level(GPin, 0);
+    gpio_set_level(BPin, 1);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    printf("Step4\n");
+    // All OFF
+    gpio_set_level(RPin, 0);
+    gpio_set_level(GPin, 0);
+    gpio_set_level(BPin, 0);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+}
+
 extern "C" void app_main() {
-  pm_init();
-  mainApp();
+  // pm_init();
+  // mainApp();
+  flashLED();
 }
