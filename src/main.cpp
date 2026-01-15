@@ -18,6 +18,17 @@ Encoder* bottomEnc = new Encoder(InputEnc_PIN_A, InputEnc_PIN_B);
 // Global calibration instance
 Calibration calib;
 
+void switchOnOffServo() {
+  while (1) {
+    printf("Servo On\n");
+    servoOn(CCW, manual);
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    printf("Servo Off\n");
+    servoOff();
+    vTaskDelay(pdMS_TO_TICKS(2000));
+  }
+}
+
 void mainApp() {
   esp_err_t ret = nvs_flash_init(); // change to secure init logic soon!!
   // 2. If NVS is full or corrupt (common after flashing new code), erase and retry
@@ -34,6 +45,8 @@ void mainApp() {
   topEnc->init();
   bottomEnc->init();
   servoInit();
+
+  // switchOnOffServo();
 
   setupLoop();
   

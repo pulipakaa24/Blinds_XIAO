@@ -38,6 +38,7 @@ void servoInit() {
   ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
 
   // Configure servo power switch pin as output
+  gpio_reset_pin(servoSwitch);
   gpio_set_direction(servoSwitch, GPIO_MODE_OUTPUT);
   gpio_set_level(servoSwitch, 0); // Start with servo power off
 
