@@ -2,7 +2,6 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "BLE.hpp"
-#include "NimBLEDevice.h"
 #include "WiFi.hpp"
 #include "nvs_flash.h"
 #include "socketIO.hpp"
