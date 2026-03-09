@@ -13,8 +13,28 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.0.0
+  esp-nimble-cpp:
+    component_hash: 224980602c685130c426248ad9a0500686d4a5aff0ec3a10b6dfacf00c554a91
+    dependencies:
+    - name: espressif/esp_hosted
+      rules:
+      - if: target in [esp32p4]
+      version: '*'
+    - name: espressif/esp_wifi_remote
+      rules:
+      - if: target in [esp32p4]
+      version: '>=0.5.3'
+    - name: idf
+      rules:
+      - if: target in [esp32p4]
+      version: '>=5.3.0'
+    source:
+      git: https://github.com/h2zero/esp-nimble-cpp.git
+      path: .
+      type: git
+    version: 002abf91e9779ea5646d75278ae52c6b848d3fa0
   espressif/esp_websocket_client:
-    component_hash: 723aba370113196c66321442426cd6452c351eef31c85c83bd1446831ef9f8f4
+    component_hash: c5a067a9fddea370c478017e66fac302f4b79c3d4027e9bdd42a019786cceb92
     dependencies:
     - name: idf
       require: private
@@ -22,13 +42,14 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 1.6.0
+    version: 1.6.1
   idf:
     source:
       type: idf
     version: 5.5.1
 direct_dependencies:
 - bubblesnake/esp_socketio_client
-manifest_hash: d73c96c5d6ddd24707089a2953e50f36a12ebbc66b5458ada3d4f55c0987ccf1
+- esp-nimble-cpp
+manifest_hash: 5f4bfc48b0eb389591b06fcf0a5c43c05e081427d594466829c6f7c545158221
 target: esp32c6
 version: 2.0.0

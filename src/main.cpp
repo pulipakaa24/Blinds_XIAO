@@ -10,6 +10,7 @@
 #include "calibration.hpp"
 #include "esp_pm.h"
 #include "mainEventLoop.hpp"
+#include "max17048.h"
 
 // Global encoder instances
 Encoder* topEnc = new Encoder(ENCODER_PIN_A, ENCODER_PIN_B);
@@ -24,6 +25,8 @@ void mainApp() {
   }
   ESP_ERROR_CHECK(ret);
 
+  main_event_queue = xQueueCreate(10, sizeof(main_event_type_t));
+  
   WiFi::init();
   Calibration::init();
   
@@ -31,6 +34,7 @@ void mainApp() {
   topEnc->init();
   bottomEnc->init();
   servoInit();
+  max17048_init();
 
   setupAndCalibrate();
 

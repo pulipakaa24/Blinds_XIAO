@@ -156,6 +156,7 @@ void setupLoop() {
             }
             else {
               printf("Token read unsuccessful, entering setup.\n");
+              nvs_close(authHandle);
               initialSetup();
             }
           }

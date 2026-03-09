@@ -66,7 +66,7 @@ esp_err_t max17048_write_reg(uint8_t reg_addr, uint8_t MSB, uint8_t LSB) {
 esp_err_t max17048_friendly_write_reg(uint8_t reg_addr, uint8_t MSB, uint8_t LSB,
   uint8_t MSBmask, uint8_t LSBmask) {
   uint8_t origMSB, origLSB;
-  esp_err_t err = max17048_read_reg(reg_addr, origMSB, origLSB);
+  esp_err_t err = max17048_read_reg(reg_addr, &origMSB, &origLSB);
   MSB &= MSBmask;
   LSB &= LSBmask;
   MSB |= origMSB & ~MSBmask;

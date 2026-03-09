@@ -40,11 +40,12 @@ void servoInit() {
   gpio_sleep_sel_dis(servoPin);
 
   // Configure servo power switch pin as output
+  gpio_reset_pin(servoSwitch);
   gpio_set_direction(servoSwitch, GPIO_MODE_OUTPUT);
   gpio_set_level(servoSwitch, 0); // Start with servo power off
 
   // Configure debug LED pin as output
-  gpio_reset_pin(GPIO_NUM_22);
+  gpio_reset_pin(debugLED);
   gpio_set_direction(debugLED, GPIO_MODE_OUTPUT);
   gpio_set_level(debugLED, 0); // Start with LED off
 

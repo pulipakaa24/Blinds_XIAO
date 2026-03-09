@@ -31,11 +31,11 @@
 // #define srvAddr "192.168.1.190:3000"
 #define srvAddr "wahwa.com"
 
-#define ENCODER_PIN_A GPIO_NUM_23 // d5
+#define ENCODER_PIN_A GPIO_NUM_21 // d3
 #define ENCODER_PIN_B GPIO_NUM_16 // d6
 
-#define InputEnc_PIN_A GPIO_NUM_1 // d1
-#define InputEnc_PIN_B GPIO_NUM_2 // d2
+#define InputEnc_PIN_A GPIO_NUM_0 // d0
+#define InputEnc_PIN_B GPIO_NUM_1 // d1
 
 #define servoPin GPIO_NUM_20
 #define servoLEDCChannel LEDC_CHANNEL_0

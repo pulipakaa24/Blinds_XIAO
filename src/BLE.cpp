@@ -179,7 +179,7 @@ void MyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInf
 void MyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
   isBLEClientConnected = false;
   printf("Client disconnected - reason: %d\n", reason);
-  reset();
+  if (!finalAuth) reset();
 }
 
 void MyCharCallbacks::onRead(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) {
