@@ -61,6 +61,11 @@ void      bms_checker_task(void *pvParameters);
 #define bms_clear_status() max17048_write_reg(MAX17048_REG_STATUS, 0, 0)
 #define bms_clear_alrt()   max17048_friendly_write_reg(MAX17048_REG_CONFIG, 0, 0, 0, 1<<5)
 
+esp_err_t max17048_read_reg(uint8_t reg_addr, uint8_t *MSB, uint8_t *LSB);
+esp_err_t max17048_write_reg(uint8_t reg_addr, uint8_t MSB, uint8_t LSB);
+esp_err_t max17048_friendly_write_reg(uint8_t reg_addr, uint8_t MSB, uint8_t LSB,
+                                      uint8_t MSBmask, uint8_t LSBmask);
+
 #ifdef __cplusplus
 }
 #endif

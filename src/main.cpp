@@ -11,6 +11,7 @@
 #include "esp_pm.h"
 #include "mainEventLoop.hpp"
 #include "max17048.h"
+#include "bms_test.hpp"
 
 // Global encoder instances
 Encoder* topEnc = new Encoder(ENCODER_PIN_A, ENCODER_PIN_B);
@@ -53,6 +54,7 @@ void pm_init() {
 }
 
 extern "C" void app_main() {
-  pm_init();
-  mainApp();
+  // pm_init();
+  // mainApp();
+  bms_test_app();
 }
