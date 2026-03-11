@@ -56,5 +56,5 @@ void pm_init() {
 extern "C" void app_main() {
   // pm_init();
   // mainApp();
-  bms_test_app();
+  bms_test_LED();
 }

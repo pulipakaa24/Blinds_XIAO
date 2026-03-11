@@ -41,6 +41,6 @@
 #define servoLEDCChannel LEDC_CHANNEL_0
 #define servoSwitch GPIO_NUM_17
 
-#define debugLED GPIO_NUM_22 // d4
+#define debugLED GPIO_NUM_18 // d10
 
 #endif

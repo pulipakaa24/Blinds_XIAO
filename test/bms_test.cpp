@@ -1,8 +1,55 @@
 #include "bms_test.hpp"
 #include "i2c.h"
 #include "max17048.h"
+#include "defines.h"
 
-void bms_test_app() {
+void bms_test_LED() {
+  vTaskDelay(pdMS_TO_TICKS(5000));
+  i2c_init();
+
+  gpio_config_t led_conf = {
+    .pin_bit_mask = (1ULL << debugLED),
+    .mode         = GPIO_MODE_OUTPUT,
+    .pull_up_en   = GPIO_PULLUP_DISABLE,
+    .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    .intr_type    = GPIO_INTR_DISABLE,
+  };
+  gpio_config(&led_conf);
+
+  bms_set_alert_bound_voltages(3.8f, 3.9f);
+  bms_clear_status();
+  bms_clear_alrt();
+
+  while (true) {
+    uint8_t msb, lsb;
+    if (max17048_read_reg(MAX17048_REG_STATUS, &msb, &lsb) == ESP_OK) {
+      bool vh = !!(msb & VHbit);
+      bool vl = !!(msb & VLbit);
+
+      bms_clear_status();
+      bms_clear_alrt();
+      if (vl) {
+        // Under-voltage: LED off
+        gpio_set_level(debugLED, 0);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+      } else if (vh) {
+        // Over-voltage: rapid blink
+        gpio_set_level(debugLED, 1);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        gpio_set_level(debugLED, 0);
+        vTaskDelay(pdMS_TO_TICKS(100));
+      } else {
+        // Normal: LED on
+        gpio_set_level(debugLED, 1);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+      }
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+  }
+}
+
+void bms_test() {
   vTaskDelay(pdMS_TO_TICKS(5000));
   esp_err_t err = i2c_init();
 
