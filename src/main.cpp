@@ -12,6 +12,8 @@
 #include "mainEventLoop.hpp"
 #include "max17048.h"
 #include "bms_test.hpp"
+#include "servo_test.hpp"
+#include "encoder_test.hpp"
 
 // Global encoder instances
 Encoder* topEnc = new Encoder(ENCODER_PIN_A, ENCODER_PIN_B);
@@ -56,5 +58,5 @@ void pm_init() {
 extern "C" void app_main() {
   // pm_init();
   // mainApp();
-  bms_test_LED();
+  encoder_test();
 }
