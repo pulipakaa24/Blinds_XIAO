@@ -51,8 +51,8 @@ void IRAM_ATTR Encoder::isr_handler(void* arg)
     if (calibListen) servoCalibListen();
     if (encoder->feedWDog) {
       esp_timer_stop(encoder->watchdog_handle);
-      esp_timer_start_once(encoder->watchdog_handle, 500000);
-      debugLEDTgl();
+      esp_timer_start_once(encoder->watchdog_handle, 2000000);
+      // debugLEDTgl();
     }
     if (encoder->wandListen) servoWandListen();
     if (encoder->serverListen) servoServerListen();
@@ -63,8 +63,8 @@ void IRAM_ATTR Encoder::isr_handler(void* arg)
     if (calibListen) servoCalibListen();
     if (encoder->feedWDog) {
       esp_timer_stop(encoder->watchdog_handle);
-      esp_timer_start_once(encoder->watchdog_handle, 500000);
-      debugLEDTgl();
+      esp_timer_start_once(encoder->watchdog_handle, 2000000);
+      // debugLEDTgl();
     }
     if (encoder->wandListen) servoWandListen();
     if (encoder->serverListen) servoServerListen();
@@ -112,7 +112,7 @@ void Encoder::setupWatchdog() {
     ESP_ERROR_CHECK(esp_timer_create(&enc_watchdog_args, &watchdog_handle));
   }
 
-  ESP_ERROR_CHECK(esp_timer_start_once(watchdog_handle, 500000));
+  ESP_ERROR_CHECK(esp_timer_start_once(watchdog_handle, 2000000));
   feedWDog = true;
 }
 

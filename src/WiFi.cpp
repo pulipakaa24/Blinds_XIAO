@@ -3,6 +3,8 @@
 #include "cJSON.h" // Native replacement for ArduinoJson
 #include "BLE.hpp"
 #include "esp_wifi_he.h"
+#include "esp_netif.h"
+#include "lwip/dns.h"
 
 TaskHandle_t WiFi::awaitConnectHandle = NULL;
 EventGroupHandle_t WiFi::s_wifi_event_group = NULL;
@@ -51,6 +53,7 @@ void WiFi::event_handler(void* arg, esp_event_base_t event_base,
       
       case WIFI_REASON_ASSOC_LEAVE:               // Reason 8 - Manual disconnect
         printf("Manual disconnect, not retrying\n");
+        esp_netif_dhcpc_start(netif);
         break;
           
       case WIFI_REASON_ASSOC_FAIL:                // Reason 203 (Can be AP busy/rate limiting)
@@ -79,7 +82,6 @@ void WiFi::event_handler(void* arg, esp_event_base_t event_base,
   else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
     printf("Got IP: " IPSTR "\n", IP2STR(&event->ip_info.ip));
-    esp_netif_dhcpc_stop(netif);
     xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     if (awaitConnectHandle != NULL) {
       xTaskNotify(awaitConnectHandle, true, eSetValueWithOverwrite);
@@ -202,7 +204,20 @@ bool WiFi::awaitConnected() {
   }
   
   if (isConnected()) {
-    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    // --- DIAGNOSTIC: snapshot network state before DHCP stop ---
+    // Save IP and DNS before stopping DHCP — dhcpc_stop clears both
+    esp_netif_ip_info_t ip_info;
+    esp_netif_get_ip_info(netif, &ip_info);
+    esp_netif_dns_info_t dns_main, dns_backup;
+    esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_main);
+    esp_netif_get_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_backup);
+
+    esp_netif_dhcpc_stop(netif);
+
+    // Re-apply IP and DNS as static configuration
+    esp_netif_set_ip_info(netif, &ip_info);
+    esp_netif_set_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_main);
+    esp_netif_set_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_backup);
     uint8_t protocol_bitmap = 0;
     esp_err_t err = esp_wifi_get_protocol(WIFI_IF_STA, &protocol_bitmap);
 
@@ -309,9 +324,18 @@ bool WiFi::attemptDHCPrenewal() {
                                         pdMS_TO_TICKS(4000));
   
   if (bits & WIFI_CONNECTED_BIT) {
-    printf("renewal success");
-    // Stop the client again to save power.
+    printf("renewal success\n");
+    esp_netif_ip_info_t ip_info;
+    esp_netif_get_ip_info(netif, &ip_info);
+    esp_netif_dns_info_t dns_main, dns_backup;
+    esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_main);
+    esp_netif_get_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_backup);
+
     esp_netif_dhcpc_stop(netif);
+
+    esp_netif_set_ip_info(netif, &ip_info);
+    esp_netif_set_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_main);
+    esp_netif_set_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_backup);
     return true;
   }
   printf("DHCP Renewal failed. Reconnecting Wi-Fi...\n");

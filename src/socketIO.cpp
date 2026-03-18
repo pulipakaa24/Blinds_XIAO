@@ -292,8 +292,8 @@ void initSocketIO() {
   config.websocket_config.headers = authHeader.c_str();
 
   if (secureSrv) {
-      config.websocket_config.transport = WEBSOCKET_TRANSPORT_OVER_SSL;
-      config.websocket_config.crt_bundle_attach = esp_crt_bundle_attach;
+    config.websocket_config.transport = WEBSOCKET_TRANSPORT_OVER_SSL;
+    config.websocket_config.crt_bundle_attach = esp_crt_bundle_attach;
   }
   
   io_client = esp_socketio_client_init(&config);

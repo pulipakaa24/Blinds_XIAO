@@ -112,7 +112,7 @@ bool Calibration::completeCalib(Encoder& topEnc) {
 
 int32_t Calibration::convertToTicks(uint8_t appPos) {
   // appPos between 0 and 10, convert to target encoder ticks.
-  return (((int32_t)appPos * (UpTicks - DownTicks)) / 10) + DownTicks;
+  return (((int32_t)appPos * (UpTicks - DownTicks)) / 10) + DownTicks + ((UpTicks - DownTicks) / 20);
 }
 
 uint8_t Calibration::convertToAppPos(int32_t ticks) {
@@ -136,6 +136,11 @@ bool calibrate() {
     // Notification received within timeout
     if (status) {
       printf("Connected successfully, awaiting destroy command\n");
+      // Socket is now authenticated. Tell the server this device is not
+      // calibrated so it resets DB state and notifies the app to show the
+      // pre-calibration screen. The device stays connected, so when the user
+      // taps Calibrate the subsequent calib_start event will arrive here.
+      emitCalibStatus(false, 1);
       xTaskNotifyWait(0, ULONG_MAX, &status, portMAX_DELAY);
       calibTaskHandle = NULL;
       if (status == 2) { // calibration complete

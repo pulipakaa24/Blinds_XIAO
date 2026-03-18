@@ -201,7 +201,7 @@ void mainEventLoop() {
       postBatteryAlert(alertType, established_soc);
       printf("CRITICAL BATTERY EVENT (%s, SOC=%d%%). Entering deep sleep.\n",
              battAlertTypeStr(alertType), established_soc);
-      esp_deep_sleep_start();
+      // esp_deep_sleep_start();
 
     } else if (received_event_type == EVENT_BATTERY_WARNING) {
       postBatteryAlert((batt_alert_type_t)bms_pending_alert, established_soc);

@@ -20,6 +20,9 @@ void initialSetup() {
 }
 
 void setupAndCalibrate() {
+  gpio_reset_pin(debugLED);
+  gpio_set_direction(debugLED, GPIO_MODE_OUTPUT);
+  gpio_set_level(debugLED, 1); // Start with LED off
   while (1) {
     setupLoop();
     if (awaitCalibration) {
@@ -27,6 +30,7 @@ void setupAndCalibrate() {
     }
     else break;
   }
+  gpio_set_level(debugLED, 0); // Start with LED off
 }
 
 void setupLoop() {

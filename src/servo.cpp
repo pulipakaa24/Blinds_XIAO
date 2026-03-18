@@ -51,7 +51,7 @@ void servoInit() {
 
   topEnc->count = servoReadPos();
   if (Calibration::getCalibrated()) initMainLoop();
-  debugLEDSwitch(1);
+  // debugLEDSwitch(1);
 }
 
 void servoOn(uint8_t dir, uint8_t manOrServer) {
@@ -232,20 +232,20 @@ void servoWandListen() {
   // otherwise, run servo in whichever direction necessary and
   // ensure servo-listener is active.
   if (topCount >= (MAX(upBound, downBound) - 1)
-      && effDiff > 1) { // TODO: see whether these margins need to be removed.
+      && effDiff > 2) { // TODO: see whether these margins need to be removed.
     servoOff();
     topEnc->wandListen.store(false, std::memory_order_release);
   }
   else if (topCount <= (MIN(upBound, downBound) + 1)
-      && effDiff < -1) {
+      && effDiff < -2) {
     servoOff();
     topEnc->wandListen.store(false, std::memory_order_release);
   }
-  else if (effDiff > 1) {
+  else if (effDiff > 2) {
     topEnc->wandListen.store(true, std::memory_order_release);
     servoOn(CCW, manual);
   }
-  else if (effDiff < -1) {
+  else if (effDiff < -2) {
     topEnc->wandListen.store(true, std::memory_order_release);
     servoOn(CW, manual);
   }
@@ -268,8 +268,12 @@ void runToAppPos(uint8_t appPos) {
   if (runningManual || !Calibration::getCalibrated()) return;
   servoOff();
 
+  if (Calibration::convertToAppPos(topEnc->getCount()) == appPos) {
+    printf("Already at pos: %d, not running\n", appPos);
+    return;
+  }
   target = Calibration::convertToTicks(appPos); // calculate target encoder position
-  printf("runToAppPos Called, running to %d from %d", target.load(), topEnc->getCount());
+  printf("runToAppPos Called, running to %d from %d\n", target.load(), topEnc->getCount());
 
   // allow servo position to settle
   vTaskDelay(pdMS_TO_TICKS(500));

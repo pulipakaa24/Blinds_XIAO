@@ -10,6 +10,7 @@
 #include "bmHTTP.hpp"
 #include "setup.hpp"
 #include "esp_mac.h"
+#include "esp_netif.h"
 
 
 std::atomic<bool> flag_scan_requested{false};
@@ -324,17 +325,42 @@ bool tokenCheck() {
     notifyAuthStatus(false);
     return false;
   }
-  
+  vTaskDelay(pdMS_TO_TICKS(500));
+
+  // --- DIAGNOSTIC: snapshot network state before HTTP ---
+  {
+    extern esp_netif_t* _diag_netif __attribute__((weak));
+    // Use esp_netif_get_handle_from_ifkey to get the STA netif without changing headers
+    esp_netif_t* sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (sta_netif) {
+      esp_netif_ip_info_t ip_info;
+      esp_netif_get_ip_info(sta_netif, &ip_info);
+      printf("[DIAG tokenCheck] IP: " IPSTR "\n", IP2STR(&ip_info.ip));
+
+      esp_netif_dns_info_t dns;
+      if (esp_netif_get_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns) == ESP_OK)
+        printf("[DIAG tokenCheck] DNS: " IPSTR "\n", IP2STR(&dns.ip.u_addr.ip4));
+      else
+        printf("[DIAG tokenCheck] DNS: NOT SET\n");
+    } else {
+      printf("[DIAG tokenCheck] Could not get STA netif handle\n");
+    }
+    printf("[DIAG tokenCheck] WiFi::isConnected() = %d\n", (int)WiFi::isConnected());
+  }
+
   // HTTP request to verify device with token
   std::string tmpTOKEN;
   {
     std::lock_guard<std::mutex> lock(dataMutex);
     tmpTOKEN = TOKEN;
   }
-  
+
   cJSON *responseRoot;
   bool success = httpGET("verify_device", tmpTOKEN, responseRoot);
-  if (!success) return false;
+  if (!success) {
+    notifyAuthStatus(false);
+    return false;
+  }
   success = false;
 
   if (responseRoot != NULL) {

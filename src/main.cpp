@@ -38,8 +38,9 @@ void mainApp() {
   bottomEnc->init();
   servoInit();
   max17048_init();
-
+  printf("beforeSetup\n");
   setupAndCalibrate();
+  printf("afterSetup\n");
 
   xTaskCreate(wakeTimer, "wakeTimer", 2048, NULL, 5, &wakeTaskHandle);
 
@@ -57,6 +58,6 @@ void pm_init() {
 
 extern "C" void app_main() {
   // pm_init();
-  // mainApp();
-  encoder_test();
+  mainApp();
+  // servo_test();
 }
