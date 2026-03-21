@@ -9,6 +9,7 @@
 #include "socketIO.hpp"
 #include "max17048.h"
 #include "esp_sleep.h"
+#include "defines.h"
 
 // Give C linkage so max17048.c (a C translation unit) can link against these
 extern "C" {
@@ -68,6 +69,8 @@ bool postServoPos(uint8_t currentAppPos) {
     cJSON_Delete(response);
 
     if (awaitCalib) {
+      gpio_set_level(debugLED, 1); // Start with LED off
+      gpio_hold_en(debugLED);
       Calibration::clearCalibrated();
       if (!calibrate()) {
         if (!WiFi::attemptDHCPrenewal())
@@ -77,6 +80,8 @@ bool postServoPos(uint8_t currentAppPos) {
           setupAndCalibrate();
         }
       }
+      gpio_hold_dis(debugLED);
+      gpio_set_level(debugLED, 0);
     }
   }
   return success;
@@ -201,7 +206,7 @@ void mainEventLoop() {
       postBatteryAlert(alertType, established_soc);
       printf("CRITICAL BATTERY EVENT (%s, SOC=%d%%). Entering deep sleep.\n",
              battAlertTypeStr(alertType), established_soc);
-      // esp_deep_sleep_start();
+      esp_deep_sleep_start();
 
     } else if (received_event_type == EVENT_BATTERY_WARNING) {
       postBatteryAlert((batt_alert_type_t)bms_pending_alert, established_soc);

@@ -91,7 +91,7 @@ void bms_checker_task(void *pvParameters) {
 
     main_event_type_t evt;
 
-    if ((status & VHbit) || (status & HDbit) || ((status & VLbit) && soc < SOC_CRITICAL_VL)) {
+    if ((status & HDbit) || ((status & VLbit) && soc < SOC_CRITICAL_VL)) {
       // Critical: overvoltage (hardware fault) or battery truly empty
       bms_pending_alert = (status & VHbit) ? BATT_ALERT_OVERVOLTAGE : BATT_ALERT_CRITICAL_LOW;
       evt = EVENT_BATTERY_CRITICAL;

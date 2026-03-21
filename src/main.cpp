@@ -57,7 +57,7 @@ void pm_init() {
 }
 
 extern "C" void app_main() {
-  // pm_init();
+  pm_init();
   mainApp();
   // servo_test();
 }
