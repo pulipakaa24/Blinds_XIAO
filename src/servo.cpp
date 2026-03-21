@@ -50,6 +50,7 @@ void servoInit() {
   gpio_set_level(debugLED, 0); // Start with LED off
 
   topEnc->count = servoReadPos();
+  bottomEnc->count = servoReadPos();
   if (Calibration::getCalibrated()) initMainLoop();
   // debugLEDSwitch(1);
 }
